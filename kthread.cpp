@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <stdint.h>
 #include "kthread.h"
+#include "Assembly.h"
 
 #if (defined(WIN32) || defined(_WIN32)) && defined(_MSC_VER)
 #define __sync_fetch_and_add(ptr, addend)     _InterlockedExchangeAdd((void*)ptr, addend)
@@ -62,7 +63,7 @@ void kt_for(int n_threads, void (*func)(void*,long,int), void *data, long n)
 		t.w = (ktf_worker_t*)calloc(n_threads, sizeof(ktf_worker_t));
 		tid = (pthread_t*)calloc(n_threads, sizeof(pthread_t));
 		for (i = 0; i < n_threads; ++i)
-			t.w[i].t = &t, t.w[i].i = i;
+			t.w[i].t = &t, t.w[i].i = i+R_INF.total_reads0;
 		for (i = 0; i < n_threads; ++i) pthread_create(&tid[i], 0, ktf_worker, &t.w[i]);
 		for (i = 0; i < n_threads; ++i) pthread_join(tid[i], 0);
 		free(tid); free(t.w);

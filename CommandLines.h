@@ -72,6 +72,7 @@ typedef struct {
 	int max_n_chain; // fall-back max number of chains to consider
 	int min_hist_kmer_cnt;
     int load_index_from_disk;
+    int continue_from_prev_state;
     int write_index_to_disk;
     int number_of_round;
     int number_of_pround;

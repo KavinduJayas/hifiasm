@@ -998,13 +998,13 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 	int hom_cov, het_cov, r_out = 0;
     ha_flt_tab_hp = ha_idx_hp = NULL; (*tot_b) = (*tot_e) = 0;
 
-    if((ha_idx == NULL)&&(asm_opt.flag & HA_F_VERBOSE_GFA)&&(round == asm_opt.number_of_round - 1)) r_out = 1;
+    if((ha_idx == NULL)&&(asm_opt.flag & HA_F_VERBOSE_GFA)&&(round == asm_opt.number_of_round - 1)) r_out = 1;//KJ: if verbose gfa and index is not loaded from prev run, enable flag that outputs files
 
     if(asm_opt.required_read_name) init_Debug_reads(&R_INF_FLAG, asm_opt.required_read_name); // for debugging only
     
     if(ha_idx) hom_cov = asm_opt.hom_cov;
 	if(ha_idx == NULL) {
-        ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1, 0, &R_INF, &hom_cov, &het_cov); // build the index
+        ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1 /*KJ:read from store set to 1 after initial round, (if verbose gfa; r starts with num of rounds)*/, 0, &R_INF, &hom_cov, &het_cov); // build the index
         asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
     }
 	///debug_adapter(&asm_opt, &R_INF);
@@ -1018,7 +1018,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     // Output_corrected_fastq();
 
 
-    cal_ec_r(asm_opt.thread_num, round, num_pround, R_INF.total_reads, (round == (asm_opt.number_of_round-1))?1:0, tot_b, tot_e);
+    cal_ec_r(asm_opt.thread_num, round, num_pround, R_INF.total_reads-R_INF.total_reads0, (round == (asm_opt.number_of_round-1))?1:0, tot_b, tot_e);
 
     // exit(1);    
 
@@ -2060,7 +2060,9 @@ int ha_assemble(void)
 	extern void ha_extract_print_list(const All_reads *rs, int n_rounds, const char *o);
 	int r, hom_cov = -1, ovlp_loaded = 0; uint64_t tot_b, tot_e;
 	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name)) {
-		ovlp_loaded = 1;
+		if (asm_opt.continue_from_prev_state == 0) {
+            ovlp_loaded = 1;
+        }
 		fprintf(stderr, "[M::%s::%.3f*%.2f] ==> loaded corrected reads and overlaps from disk\n", __func__, yak_realtime(), yak_cpu_usage());
 		if (asm_opt.extract_list) {
 			ha_extract_print_list(&R_INF, asm_opt.extract_iter, asm_opt.extract_list);
@@ -2077,19 +2079,21 @@ int ha_assemble(void)
         ha_flt_tab = ha_idx = NULL;
         if((asm_opt.flag & HA_F_VERBOSE_GFA)) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
 
+        R_INF.total_reads0 = R_INF.total_reads;
 		// construct hash table for high occurrence k-mers
 		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) 
         {
+            R_INF.total_reads=0;
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}
 		// error correction
 		assert(asm_opt.number_of_round > 0);
-		for (r = ha_idx?asm_opt.number_of_round-1:0; r < asm_opt.number_of_round; ++r) {
+		for (r = ha_idx?asm_opt.number_of_round-1:0; r < asm_opt.number_of_round; ++r) { //KJ:if verbose gfa: only one round of ec
 			ha_opt_reset_to_round(&asm_opt, r); // this update asm_opt.roundID and a few other fields
             tot_b = tot_e = 0;
 			// ha_overlap_and_correct(r);
-            ha_ec(r, asm_opt.number_of_pround, (r<asm_opt.number_of_round-1)?1:0, &tot_b, &tot_e);
+            ha_ec(r, asm_opt.number_of_pround, (r<asm_opt.number_of_round-1)?1:0 /*KJ:destroy index if last round*/, &tot_b, &tot_e);
 			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> corrected reads for round %d\n", __func__, yak_realtime(),
 					yak_cpu_usage(), yak_peakrss_in_gb(), r + 1);
             fprintf(stderr, "[M::%s] # bases: %lu; # corrected bases: %lu\n", __func__, tot_b, tot_e);

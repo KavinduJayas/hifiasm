@@ -3230,9 +3230,14 @@ uint32_t is_chemical_r_qual(overlap_region_alloc *ov, asg64_v *idx, int64_t len,
     return 0;
 }
 
+volatile int debug2;
 
 static void worker_hap_ec(void *data, long i, int tid)
 {
+    if(i==120684){
+        debug2++;
+    }
+    //i+=((All_reads*)data)->total_reads0;
 	ec_ovec_buf_t0 *b = &(((ec_ovec_buf_t*)data)->a[tid]);
     uint32_t high_occ = asm_opt.hom_cov * (2.0 - HA_KMER_GOOD_RATIO);
     uint32_t low_occ = asm_opt.hom_cov * HA_KMER_GOOD_RATIO;
@@ -3309,19 +3314,19 @@ static void worker_hap_ec(void *data, long i, int tid)
     b->cnt[1] += wcns_gen(&b->olist, &R_INF, &b->self_read, &b->ovlp_read, &b->exz, &b->pidx, &b->v64, &buf0, 0, 512, b->self_read.length, 3, 0.500001, aux_o, &b->v32, &b->cns, 256, i);
     copy_asg_arr(b->sp, buf0);
 
-    push_nec_re(aux_o, &(scc.a[i]));
-    push_nec_re(aux_o, &(scb.a[i]));
+    push_nec_re(aux_o, &(scc.a[i-R_INF.total_reads0]));
+    push_nec_re(aux_o, &(scb.a[i-R_INF.total_reads0]));
 
     // if((asm_opt.is_ont) && is_chemical_r_qual(&b->olist, &b->v64, qlen, 1, 16, &(b->v8q), i)/**(is_uncorrected_read(&b->olist, &b->v64, qlen, 1600))**/) {
     //     // b->olist.length = 0;
     //     fprintf(stderr, "[M::%s] rid::%ld\t%.*s\n\n", __func__, i, (int)Get_NAME_LENGTH(R_INF, i), Get_NAME(R_INF, i));
     // }
 
-    push_ne_ovlp(&(R_INF.paf[i]), &b->olist, 1, &R_INF, &(scc.a[i])/**, i, &b->self_read, &b->ovlp_read**/);
+    push_ne_ovlp(&(R_INF.paf[i]), &b->olist, 1, &R_INF, &(scc.a[i-R_INF.total_reads0])/**, i, &b->self_read, &b->ovlp_read**/);
     push_ne_ovlp(&(R_INF.reverse_paf[i]), &b->olist, 2, &R_INF, NULL/**, i, NULL, NULL**/);
 
 
-    check_well_cal(&(scc.a[i]), &b->v64, &(R_INF.paf[i].is_fully_corrected), &(R_INF.paf[i].is_abnormal), qlen, (MIN_COVERAGE_THRESHOLD*2), &(R_INF.paf[i]));
+    check_well_cal(&(scc.a[i-R_INF.total_reads0]), &b->v64, &(R_INF.paf[i].is_fully_corrected), &(R_INF.paf[i].is_abnormal), qlen, (MIN_COVERAGE_THRESHOLD*2), &(R_INF.paf[i]));
     R_INF.trio_flag[i] = AMBIGU;
 
     // uint32_t k;
@@ -3766,6 +3771,7 @@ uint64_t gen_hap_dc_cov(asg64_v *be, asg64_v *ba, ma_hit_t_alloc *paf, All_reads
 
 static void worker_hap_dc_ec(void *data, long i, int tid)
 {
+    //i+=((All_reads*)data)->total_reads0;
     ec_ovec_buf_t0 *b = &(((ec_ovec_buf_t*)data)->a[tid]);
     // fprintf(stderr, "-0-[M::%s-beg] rid->%ld\n", __func__, i);
     // if (memcmp("m64012_190921_234837/139067658/ccs", Get_NAME((R_INF), i), Get_NAME_LENGTH((R_INF),i)) == 0) {
@@ -3865,6 +3871,7 @@ void flip_paf_rc(uint64_t rid, ma_hit_t_alloc *paf, All_reads *rref)
 
 static void worker_hap_post_rev(void *data, long i, int tid)
 {
+    //i+=((All_reads*)data)->total_reads0;
     ec_ovec_buf_t0 *b = &(((ec_ovec_buf_t*)data)->a[tid]);
     uint64_t k, l, kl, nn; char *a, c;
     // fprintf(stderr, "-0-[M::%s-beg] rid->%ld\n", __func__, i);
@@ -5776,6 +5783,7 @@ uint32_t is_well_cal(asg64_v *idx, ma_hit_t_alloc *in0, ma_hit_t_alloc *in1, int
 
 static void worker_hap_dc_ec0(void *data, long i, int tid)
 {
+    //i+=((All_reads*)data)->total_reads0;
     // if(i == 6) fprintf(stderr, "-mm-[M::%s]\tqn::%u::%.*s\tf[i]::%u\n", __func__, (uint32_t)(i), (int)Get_NAME_LENGTH(R_INF, i), Get_NAME((R_INF), i), scc.f[i]);
     if(scc.f[i]) {
         scc.a[i].n = 0; sca.a[i].n = 0;
@@ -5859,6 +5867,7 @@ void get_origin_ec_coor(asg16_v *ec, uint64_t *ts, uint64_t *te)
 
 static void update_scb0(void *data, long i, int tid)
 {
+    //i+=((All_reads*)data)->total_reads0;
     if(sca.a[i].n) {
         kv_resize(uint16_t, scb.a[i], sca.a[i].n); scb.a[i].n = sca.a[i].n;
         memcpy(scb.a[i].a, sca.a[i].a, scb.a[i].n*sizeof((*(sca.a[i].a))));
@@ -5964,6 +5973,7 @@ void dbg_rsc(char *str0, uint64_t l0, char *str1, uint64_t l1, asg16_v *sc, char
 
 static void worker_sl_ec(void *data, long i, int tid)
 {
+    //i+=((All_reads*)data)->total_reads0;
     // if(i != 0) return;
 
 	sl_v *p = &(((sl_v*)data)[tid]); uint8_t *oa = NULL; char *na = NULL; uint64_t tqual, wqual;
@@ -5971,9 +5981,9 @@ static void worker_sl_ec(void *data, long i, int tid)
 
 
     ci = 0; xk = yk = 0; tot_e = 0;
-    while (ci < scc.a[i].n) {
+    while (ci < scc.a[i-R_INF.total_reads0].n) {
         // ci = pop_trace_bp(&scc.a[i], ci, &c, &b, &len);
-        ci = pop_trace_bp_f(&scc.a[i], ci, &c, &bq, &bt, &len);
+        ci = pop_trace_bp_f(&scc.a[i-R_INF.total_reads0], ci, &c, &bq, &bt, &len);
         if(c != 3) yk += len;
         if(c != 0) tot_e += len;
         // fprintf(stderr, "|%u%c(%c)", len, cm[c], ((c==1)||(c==2))?(cc[b]):('*')); // s_H
@@ -5989,10 +5999,10 @@ static void worker_sl_ec(void *data, long i, int tid)
     // cc[0] = 'A'; cc[1] = 'C'; cc[2] = 'G'; cc[3] = 'T';
 
     ci = 0; xk = yk = 0; Nn = 0;
-    while (ci < scc.a[i].n) {
+    while (ci < scc.a[i-R_INF.total_reads0].n) {
         wx[0] = xk; wy[0] = yk;
-        // ci = pop_trace_bp(&scc.a[i], ci, &c, &b, &len);
-        ci = pop_trace_bp_f(&scc.a[i], ci, &c, &bq, &bt, &len);
+        // ci = pop_trace_bp(&scc.a[i-R_INF.total_reads0], ci, &c, &b, &len);
+        ci = pop_trace_bp_f(&scc.a[i-R_INF.total_reads0], ci, &c, &bq, &bt, &len);
         if(c != 2) xk += len;
         if(c != 3) yk += len;
         wx[1] = xk; wy[1] = yk;
@@ -6042,9 +6052,9 @@ static void worker_sl_ec(void *data, long i, int tid)
     if(asm_opt.is_sc) {
         oa = p->q.a; na = p->a; 
         ci = 0; xk = yk = 0; Nn = 0;
-        while (ci < scc.a[i].n) {
+        while (ci < scc.a[i-R_INF.total_reads0].n) {
             wx[0] = xk; wy[0] = yk;
-            ci = pop_trace_bp_f(&scc.a[i], ci, &c, &bq, &bt, &len);
+            ci = pop_trace_bp_f(&scc.a[i-R_INF.total_reads0], ci, &c, &bq, &bt, &len);
             if(c != 2) xk += len;
             if(c != 3) yk += len;
             wx[1] = xk; wy[1] = yk;

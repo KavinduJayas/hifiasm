@@ -276,6 +276,7 @@ void init_opt(hifiasm_opt_t* asm_opt)
 	asm_opt->max_n_chain = MIN_N_CHAIN;
 	asm_opt->min_hist_kmer_cnt = 5;
     asm_opt->load_index_from_disk = 1;
+    asm_opt->continue_from_prev_state = 0;
     asm_opt->write_index_to_disk = 1;
     asm_opt->number_of_round = 3;
     asm_opt->number_of_pround = 0/**3**/;
@@ -868,7 +869,7 @@ int CommandLine_process(int argc, char *argv[], hifiasm_opt_t* asm_opt)
 
     int c;
 
-    while ((c = ketopt(&opt, argc, argv, 1, "hvt:o:k:w:m:n:r:a:b:z:x:y:p:c:d:M:P:if:D:FN:1:2:3:4:5:l:s:O:eu:", long_options)) >= 0) {
+    while ((c = ketopt(&opt, argc, argv, 1, "hvt:o:k:w:m:n:r:a:b:z:x:y:p:c:d:M:P:ijf:D:FN:1:2:3:4:5:l:s:O:eu:", long_options)) >= 0) {
         if (c == 'h')
         {
             Print_H(asm_opt);
@@ -885,6 +886,7 @@ int CommandLine_process(int argc, char *argv[], hifiasm_opt_t* asm_opt)
         else if (c == 'r') asm_opt->number_of_round = atoi(opt.arg);
         else if (c == 'k') asm_opt->k_mer_length = atoi(opt.arg);
         else if (c == 'i') asm_opt->load_index_from_disk = 0; 
+        else if (c == 'j') asm_opt->continue_from_prev_state = 1; 
         else if (c == 'w') asm_opt->mz_win = atoi(opt.arg);
 		else if (c == 'D') asm_opt->high_factor = atof(opt.arg);
 		else if (c == 'F') asm_opt->flag |= HA_F_NO_KMER_FLT;

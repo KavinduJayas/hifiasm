@@ -42,6 +42,12 @@ void init_All_reads(All_reads* r)
 	r->name_index = (uint64_t*)malloc(sizeof(uint64_t)*r->name_index_size);
 	r->name_index[0] = 0;
 }
+void reinit_All_reads(All_reads* r)
+{
+	r->read_length = (uint64_t*)realloc(r->read_length, sizeof(uint64_t)*r->index_size);
+	r->name_index = (uint64_t*)realloc(r->name_index, sizeof(uint64_t)*r->name_index_size);
+	r->name_index[r->total_reads0-1] = 0;
+}
 
 void destory_All_reads(All_reads* r)
 {
@@ -408,8 +414,7 @@ int destory_read_bin(All_reads* r)
 	free(r->second_round_cigar);
 	return 1;
 }
-
-
+volatile int debug;
 
 void ha_insert_read_len(All_reads *r, int read_len, int name_len)
 {
@@ -421,10 +426,21 @@ void ha_insert_read_len(All_reads *r, int read_len, int name_len)
 	if (r->index_size < r->total_reads + 2) {
 		r->index_size = r->index_size * 2 + 2;
 		r->read_length = (uint64_t*)realloc(r->read_length, sizeof(uint64_t) * r->index_size);
+		 if (!r->read_length) {
+            fprintf(stderr, "Error: Memory allocation failed for read_length\n");
+            exit(EXIT_FAILURE);
+        }
 		r->name_index_size = r->name_index_size * 2 + 2;
 		r->name_index = (uint64_t*)realloc(r->name_index, sizeof(uint64_t) * r->name_index_size);
+		if (!r->name_index) {
+            fprintf(stderr, "Error: Memory allocation failed for name_index\n");
+            exit(EXIT_FAILURE);
+		}
 	}
 
+	if(r->total_reads==244027){
+		debug=0;
+	}
 	r->read_length[r->total_reads - 1] = read_len;
 	r->name_index[r->total_reads] = r->name_index[r->total_reads - 1] + name_len;
 }
@@ -468,6 +484,53 @@ void malloc_All_reads(All_reads* r)
 	r->N_site = (uint64_t**)calloc(r->total_reads, sizeof(uint64_t*));
 	r->trio_flag = (uint8_t*)malloc(r->total_reads*sizeof(uint8_t));
 	memset(r->trio_flag, AMBIGU, r->total_reads*sizeof(uint8_t));
+}
+void realloc_All_reads(All_reads* r)
+{
+    r->read_size = (uint64_t*)realloc(r->read_size, sizeof(uint64_t)*r->total_reads);
+	if (r->total_reads > r->total_reads0) {
+		memcpy(r->read_size + r->total_reads0, r->read_length + r->total_reads0, sizeof(uint64_t)*(r->total_reads - r->total_reads0));
+	}
+
+    r->read_sperate = (uint8_t**)realloc(r->read_sperate, sizeof(uint8_t*)*r->total_reads);
+    if (asm_opt.is_sc) REALLOC(r->rsc, r->total_reads);
+
+    long long i = r->total_reads0;
+    for (; i < (long long)r->total_reads; i++)
+    {
+        r->read_sperate[i] = (uint8_t*)malloc(sizeof(uint8_t)*(r->read_length[i]/4+1));
+        if (r->rsc) MALLOC(r->rsc[i], (r->read_length[i]/sc_bn) + ((r->read_length[i]%sc_bn)?1:0));
+    }
+
+    r->cigars = (Compressed_Cigar_record*)realloc(r->cigars, sizeof(Compressed_Cigar_record)*r->total_reads);
+    r->second_round_cigar = (Compressed_Cigar_record*)realloc(r->second_round_cigar, sizeof(Compressed_Cigar_record)*r->total_reads);
+    r->paf = (ma_hit_t_alloc*)realloc(r->paf, sizeof(ma_hit_t_alloc)*r->total_reads);
+    r->reverse_paf = (ma_hit_t_alloc*)realloc(r->reverse_paf, sizeof(ma_hit_t_alloc)*r->total_reads);
+    ///r->pb_regions = (kvec_t_u64_warp*)realloc(r->pb_regions, r->total_reads*sizeof(kvec_t_u64_warp));
+
+    for (i = r->total_reads0; i < (long long)r->total_reads; i++)
+    {
+        r->second_round_cigar[i].size = r->cigars[i].size = 0;
+        r->second_round_cigar[i].length = r->cigars[i].length = 0;
+        r->second_round_cigar[i].record = r->cigars[i].record = NULL;
+
+        r->second_round_cigar[i].lost_base_size = r->cigars[i].lost_base_size = 0;
+        r->second_round_cigar[i].lost_base_length = r->cigars[i].lost_base_length = 0;
+        r->second_round_cigar[i].lost_base = r->cigars[i].lost_base = NULL;
+        init_ma_hit_t_alloc(&(r->paf[i]));
+        init_ma_hit_t_alloc(&(r->reverse_paf[i]));
+        ///kv_init(r->pb_regions[i].a);
+    }
+
+    r->name = (char*)realloc(r->name, sizeof(char)*r->total_name_length);
+	// Realloc N_site and zero only the new slots
+    r->N_site = (uint64_t**)realloc(r->N_site, sizeof(uint64_t*)*r->total_reads);
+    if (r->total_reads > r->total_reads0) {
+        memset(r->N_site + r->total_reads0, 0, (r->total_reads - r->total_reads0) * sizeof(uint64_t*));
+    }
+
+    r->trio_flag = (uint8_t*)realloc(r->trio_flag, r->total_reads*sizeof(uint8_t));
+    memset(r->trio_flag + r->total_reads0, AMBIGU, (r->total_reads - r->total_reads0)*sizeof(uint8_t));
 }
 
 void destory_UC_Read(UC_Read* r)

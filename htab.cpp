@@ -759,7 +759,7 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 			}\
 		} else {\
 			while ((ret = kseq_read(p->ks)) >= 0) {\
-				int l = (int)(p->ks->seq.l) - (int)(p->opt->adaLen) - (int)(p->opt->adaLen);\
+				int l = (int)(p->ks->seq.l) - (int)(p->opt->adaLen) - (int)(p->opt->adaLen);/*KJ:why not 2*adaLen? */\
 				if((l <= 0) || (l < asm_opt.rl_cut)) continue;\
 				if((asm_opt.is_sc) && (asm_opt.sc_cut > 0) && (!flt_quals(p->ks->qual.s+p->opt->adaLen, l, 33, asm_opt.sc_cut))) continue;\
 				if (p->n_seq >= 1<<28) {\
@@ -769,18 +769,18 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 				if (p->rs_out) {\
 					/**for 0-th count, just insert read length to R_INF, instead of read**/\
 					if (p->flag & HAF_RS_WRITE_LEN) {\
-						assert(p->n_seq == p->rs_out->total_reads);\
+						assert(p->n_seq == p->rs_out->total_reads /*- p->rs_out->total_reads0*/);\
 						ha_insert_read_len(p->rs_out, l, p->ks->name.l);\
 					} else if (p->flag & HAF_RS_WRITE_SEQ) {\
 						int i, n_N;\
-						assert(l == (int)p->rs_out->read_length[p->n_seq]);\
+						assert(l == (int)p->rs_out->read_length[p->n_seq /*+ p->rs_out->total_reads0*/]);\
 						for (i = n_N = 0; i < l; ++i) /** count number of ambiguous bases**/\
 							if (seq_nt4_table[(uint8_t)p->ks->seq.s[i+p->opt->adaLen]] >= 4)\
 								++n_N;\
-						ha_compress_base(Get_READ(*p->rs_out, p->n_seq), p->ks->seq.s+p->opt->adaLen, l, &p->rs_out->N_site[p->n_seq], n_N);\
-						memcpy(&p->rs_out->name[p->rs_out->name_index[p->n_seq]], p->ks->name.s, p->ks->name.l);\
+						ha_compress_base(Get_READ(*p->rs_out, p->n_seq /*+ p->rs_out->total_reads0*/), p->ks->seq.s+p->opt->adaLen, l, &p->rs_out->N_site[p->n_seq /*+ p->rs_out->total_reads0*/], n_N);\
+						memcpy(&p->rs_out->name[p->rs_out->name_index[p->n_seq/*+p->rs_out->total_reads0*/]], p->ks->name.s, p->ks->name.l);\
 						if(p->rs_out->rsc) {\
-							ha_compress_qual(Get_QUAL(*p->rs_out, p->n_seq), p->ks->qual.s+p->opt->adaLen, l, sc_bn, 33);\
+							ha_compress_qual(Get_QUAL(*p->rs_out, p->n_seq /*+ p->rs_out->total_reads0*/), p->ks->qual.s+p->opt->adaLen, l, sc_bn, 33);\
 							/**print_fastq(NULL, p->ks->name.s, p->ks->seq.s, p->ks->qual.s, (1<<sc_bn), 33);**/\
 							/**if(l <= 1000000) {\
 								convert_qual(src_a, p->ks->qual.s+p->opt->adaLen, l, (1<<sc_bn), 0, 33);\
@@ -989,11 +989,20 @@ ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, h
 	ha_ct_t *h = 0;
 	assert(!(flag & HAF_RS_WRITE_LEN) || !(flag & HAF_RS_WRITE_SEQ)); // not both
 	///for 0-th counting, flag = HAF_COUNT_ALL|HAF_RS_WRITE_LEN
-	if (rs) {
-		if (flag & HAF_RS_WRITE_LEN)
+	if (rs){
+		if (flag & HAF_RS_WRITE_LEN ){//KJ: if prev state was loaded from verbose gfa, this opt check is unneccessary
+			if(asm_opt.continue_from_prev_state==0)
 			init_All_reads(rs);
-		else if (flag & HAF_RS_WRITE_SEQ)
-			malloc_All_reads(rs);
+			else
+			reinit_All_reads(rs);
+		}else if (flag & HAF_RS_WRITE_SEQ){
+			if(asm_opt.continue_from_prev_state==0) {
+				malloc_All_reads(rs);
+			}else{
+				realloc_All_reads(rs);
+			}
+		}
+			
 	}
 	yak_copt_init(&opt);
 	opt.k = k;
@@ -1235,6 +1244,7 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 	int peak_hom, peak_het, i, extra_flag1, extra_flag2;
 	ha_ct_t *ct;
 	ha_pt_t *pt;
+	//KJ: read_from_store = 1 either after the initial round or if reads are loaded with verbose gfa
 	if (read_from_store) {///if reads have already been read
 		extra_flag1 = extra_flag2 = HAF_RS_READ;
 	} else if (rs->total_reads == 0) {///if reads & length have not been scanned

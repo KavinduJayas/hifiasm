@@ -133,6 +133,7 @@ typedef struct
 	uint64_t* name_index;
 	uint64_t name_index_size;
 	uint64_t total_reads;
+	uint64_t total_reads0;
 	uint64_t total_reads_bases;
 	uint64_t total_name_length;
 
@@ -224,7 +225,9 @@ extern all_ul_t ULG_INF;
 // extern uint32_t debug_out;
 
 void init_All_reads(All_reads* r);
+void reinit_All_reads(All_reads* r);
 void malloc_All_reads(All_reads* r);
+void realloc_All_reads(All_reads* r);
 void ha_insert_read_len(All_reads *r, int read_len, int name_len);
 void ha_compress_base(uint8_t* dest, char* src, uint64_t src_l, uint64_t** N_site_lis, uint64_t N_site_occ);
 void ha_compress_qual(uint8_t* dest, char* src, uint64_t src_l, uint64_t bitn, uint64_t sc_off);
