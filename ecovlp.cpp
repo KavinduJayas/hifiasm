@@ -3234,7 +3234,7 @@ volatile int debug2;
 
 static void worker_hap_ec(void *data, long i, int tid)
 {
-    if(i==120684){
+    if(i==2655){
         debug2++;
     }
     //i+=((All_reads*)data)->total_reads0;
@@ -6085,7 +6085,8 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
 
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
 
-    kt_for(n_thre, worker_hap_ec, b, n_a);///debug_for_fix
+    //kt_for(n_thre, worker_hap_ec, b, n_a);///debug_for_fix
+    kt_for_mod(n_thre, worker_hap_ec, b, n_a);///debug_for_fix
 
     for (k = 0; k < n_thre; ++k) {
         num_base += b->a[k].cnt[0];
@@ -6109,7 +6110,8 @@ void cal_update_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
 
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
 
-    kt_for(n_thre, worker_update_dc_ec, b, n_a);///debug_for_fix
+    // kt_for(n_thre, worker_update_dc_ec, b, n_a);///debug_for_fix
+    kt_for_mod(n_thre, worker_update_dc_ec, b, n_a);///debug_for_fix
 
     for (k = 0; k < n_thre; ++k) {
         num_ec_o += b->a[k].cnt[0]; num_nec_o += b->a[k].cnt[1];
@@ -6205,7 +6207,8 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
     rb = urb = 0;
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
 
-    kt_for(n_thre, worker_hap_dc_ec, b, n_a);///debug_for_fix
+    // kt_for(n_thre, worker_hap_dc_ec, b, n_a);///debug_for_fix
+    kt_for_mod(n_thre, worker_hap_dc_ec, b, n_a);///debug_for_fix
     
     for (k = 0; k < n_thre; ++k) {
         rb += b->a[k].cnt[0]; urb += b->a[k].cnt[1];
@@ -6219,14 +6222,16 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
         
         for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
         
-        kt_for(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix
+        // kt_for(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix
+        kt_for_mod(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix
 
         for (k = 0; k < n_thre; ++k) {
             num_base += b->a[k].cnt[0];
             num_correct += b->a[k].cnt[1];
         }
 
-        kt_for(n_thre, update_scb0, b, n_a);
+        // kt_for(n_thre, update_scb0, b, n_a);
+        kt_for_mod(n_thre, update_scb0, b, n_a);
     }
 
     if(round >= 0) {
@@ -6300,7 +6305,8 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
     
 
     if((!is_sv) || (is_sv && is_cr)) {
-        kt_for(n_thre, worker_hap_post_rev, b, n_a);
+        // kt_for(n_thre, worker_hap_post_rev, b, n_a);
+        kt_for_mod(n_thre, worker_hap_post_rev, b, n_a);
     }
 
     // cal_sec_ec_multiple(b, n_thre, n_a, -1);
@@ -6417,7 +6423,8 @@ void sl_ec_r(uint64_t n_thre, uint64_t n_a)
         init_UC_Read(&b[k].z); kv_init(b[k].q);
     }
 
-    kt_for(n_thre, worker_sl_ec, b, n_a);///debug_for_fix
+    // kt_for(n_thre, worker_sl_ec, b, n_a);///debug_for_fix
+    kt_for_mod(n_thre, worker_sl_ec, b, n_a);///debug_for_fix
 
     for (k = 0; k < n_thre; k++) {
         free(b[k].a); destory_UC_Read(&b[k].z); kv_destroy(b[k].q);

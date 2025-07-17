@@ -7,7 +7,7 @@
 #include "Process_Read.h"
 #include "kdq.h"
 
-
+//void worker_hap_ec(void *data, long i, int tid);
 void prt_chain(overlap_region_alloc *o);
 void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, uint64_t is_sv, uint64_t *tot_b, uint64_t *tot_e);
 void sl_ec_r(uint64_t n_thre, uint64_t n_a);

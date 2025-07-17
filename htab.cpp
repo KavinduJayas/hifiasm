@@ -983,7 +983,7 @@ static ha_ct_t *yak_count(const yak_copt_t *opt, const char *fn, int flag, ha_pt
 ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, ha_pt_t *p0, const void *flt_tab, All_reads *rs, ma_utg_v *us, int keep_adapter, int *low_freq, int unique_only)
 {
 	int i;
-	int64_t n_seq = 0;
+	int64_t n_seq = R_INF.total_reads0;
 	uint64_t n_bs = 0;
 	yak_copt_t opt;
 	ha_ct_t *h = 0;
@@ -1152,7 +1152,7 @@ void *ha_ft_gen(const hifiasm_opt_t *asm_opt, All_reads *rs, int *hom_cov, int i
 	h = ha_count(asm_opt, HAF_COUNT_ALL|ex_flag|((read_from_store)?(HAF_RS_READ):(HAF_RS_WRITE_LEN)), !(asm_opt->flag&HA_F_NO_HPC), asm_opt->k_mer_length, asm_opt->mz_win, NULL, NULL, rs, NULL, 1, NULL, 0);
 	if((asm_opt->flag & HA_F_VERBOSE_GFA))
 	{
-		write_ct_index((void*)h, asm_opt->output_file_name);
+		//write_ct_index((void*)h, asm_opt->output_file_name);
 		// load_ct_index(&ha_ct_table, asm_opt->output_file_name);
 		// debug_ct_index((void*)h, ha_ct_table);
 		// debug_ct_index(ha_ct_table, (void*)h);
@@ -1542,7 +1542,7 @@ int load_pt_index(void **r_flt_tab, ha_pt_t **r_ha_idx, All_reads *r, hifiasm_op
     r->reverse_paf = (ma_hit_t_alloc*)malloc(sizeof(ma_hit_t_alloc)*r->total_reads);
 	for (k = 0; k < r->total_reads; k++) {
         // init_ma_hit_t_alloc(&(r->paf[k]));
-        init_ma_hit_t_alloc(&(r->reverse_paf[k]));
+        init_ma_hit_t_alloc(&(r->reverse_paf[k]));//KJ:why is reverse paf not loaded?
 
 		f_flag += fread(&(r->paf[k].is_fully_corrected), sizeof(r->paf[k].is_fully_corrected), 1, fp);
         f_flag += fread(&(r->paf[k].is_abnormal), sizeof(r->paf[k].is_abnormal), 1, fp);

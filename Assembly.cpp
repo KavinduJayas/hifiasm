@@ -1003,7 +1003,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     if(asm_opt.required_read_name) init_Debug_reads(&R_INF_FLAG, asm_opt.required_read_name); // for debugging only
     
     if(ha_idx) hom_cov = asm_opt.hom_cov;
-	if(ha_idx == NULL) {
+	if(ha_idx == NULL || asm_opt.continue_from_prev_state) {
         ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1 /*KJ:read from store set to 1 after initial round, (if verbose gfa; r starts with num of rounds)*/, 0, &R_INF, &hom_cov, &het_cov); // build the index
         asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
     }
@@ -1013,7 +1013,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     het_cnt = NULL;
     if(round == asm_opt.number_of_round-1 && asm_opt.is_dbg_het_cnt) CALLOC(het_cnt, R_INF.total_reads);
 
-    if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+ //   if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
 
     // Output_corrected_fastq();
 
@@ -1027,21 +1027,21 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
         ha_pt_destroy(ha_idx); ha_idx = NULL;
     }
 	
-
+/*
     if(het_cnt) {
         print_het_cnt_log(het_cnt); free(het_cnt); het_cnt = NULL;
     }
-
+*/
     // exit(1);
 
 
-    if (asm_opt.required_read_name) prt_dbg_rs(R_INF_FLAG.fp_r0, &R_INF_FLAG, 0); // for debugging only
+    //if (asm_opt.required_read_name) prt_dbg_rs(R_INF_FLAG.fp_r0, &R_INF_FLAG, 0); // for debugging only
     
 	// save corrected reads to R_INF
 	// sl_ec_r(asm_opt.thread_num, R_INF.total_reads);
 
-    if (asm_opt.required_read_name) prt_dbg_rs(R_INF_FLAG.fp_r1, &R_INF_FLAG, 1); // for debugging only
-    if (asm_opt.required_read_name) destory_Debug_reads(&R_INF_FLAG), exit(0); // for debugging only
+    //if (asm_opt.required_read_name) prt_dbg_rs(R_INF_FLAG.fp_r1, &R_INF_FLAG, 1); // for debugging only
+   // if (asm_opt.required_read_name) destory_Debug_reads(&R_INF_FLAG), exit(0); // for debugging only
     ///debug_print_pob_regions();
 
     // Output_corrected_reads();
@@ -2081,15 +2081,15 @@ int ha_assemble(void)
 
         R_INF.total_reads0 = R_INF.total_reads;
 		// construct hash table for high occurrence k-mers
-		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) 
+		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && (ha_flt_tab == NULL || asm_opt.continue_from_prev_state) ) 
         {
-            R_INF.total_reads=0;
+            if(asm_opt.continue_from_prev_state && ha_flt_tab == NULL ) R_INF.total_reads=0;
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}
 		// error correction
 		assert(asm_opt.number_of_round > 0);
-		for (r = ha_idx?asm_opt.number_of_round-1:0; r < asm_opt.number_of_round; ++r) { //KJ:if verbose gfa: only one round of ec
+		for (r = (ha_idx && asm_opt.continue_from_prev_state==0)?asm_opt.number_of_round-1:0; r < asm_opt.number_of_round; ++r) { //KJ:if verbose gfa: only one round of ec
 			ha_opt_reset_to_round(&asm_opt, r); // this update asm_opt.roundID and a few other fields
             tot_b = tot_e = 0;
 			// ha_overlap_and_correct(r);
@@ -2101,10 +2101,10 @@ int ha_assemble(void)
 			// 		asm_opt.num_bases, asm_opt.num_corrected_bases, asm_opt.num_recorrected_bases);
 			// fprintf(stderr, "[M::%s] size of buffer: %.3fGB\n", __func__, asm_opt.mem_buf / 1073741824.0);
 		}
-		if (asm_opt.flag & HA_F_WRITE_EC) {
+		/*if (asm_opt.flag & HA_F_WRITE_EC) {
             if(asm_opt.is_sc) Output_corrected_fastq();
             else Output_corrected_reads();
-        }
+        }*/
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
 		// ha_overlap_final();
