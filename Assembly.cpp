@@ -2068,11 +2068,11 @@ int ha_assemble(void)
 			ha_extract_print_list(&R_INF, asm_opt.extract_iter, asm_opt.extract_list);
 			exit(0);
 		}
-		if (asm_opt.flag & HA_F_WRITE_EC) {
-            if(asm_opt.is_sc) Output_corrected_fastq();
-            else Output_corrected_reads();
-        }
-		if (asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
+		// if (asm_opt.flag & HA_F_WRITE_EC) {
+        //     if(asm_opt.is_sc) Output_corrected_fastq();
+        //     else Output_corrected_reads();
+        // }
+		// if (asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
         if (asm_opt.het_cov == -1024) hap_recalculate_peaks(asm_opt.output_file_name), ovlp_loaded = 2;
 	}
 	if (!ovlp_loaded) {
@@ -2083,7 +2083,7 @@ int ha_assemble(void)
 		// construct hash table for high occurrence k-mers
 		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) 
         {
-            R_INF.total_reads=0;
+            //R_INF.total_reads=0;
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}
@@ -2101,10 +2101,10 @@ int ha_assemble(void)
 			// 		asm_opt.num_bases, asm_opt.num_corrected_bases, asm_opt.num_recorrected_bases);
 			// fprintf(stderr, "[M::%s] size of buffer: %.3fGB\n", __func__, asm_opt.mem_buf / 1073741824.0);
 		}
-		if (asm_opt.flag & HA_F_WRITE_EC) {
-            if(asm_opt.is_sc) Output_corrected_fastq();
-            else Output_corrected_reads();
-        }
+		// if (asm_opt.flag & HA_F_WRITE_EC) {
+        //     if(asm_opt.is_sc) Output_corrected_fastq();
+        //     else Output_corrected_reads();
+        // }
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
 		// ha_overlap_final();
@@ -2113,7 +2113,7 @@ int ha_assemble(void)
 		// fprintf(stderr, "\n[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n", __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());
 		// ha_print_ovlp_stat(R_INF.paf, R_INF.reverse_paf, R_INF.total_reads);
 		ha_ft_destroy(ha_flt_tab);
-		if (asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
+		// if (asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
 		ha_triobin(&asm_opt);
 
         // exit(1);
@@ -2121,9 +2121,9 @@ int ha_assemble(void)
     if(ovlp_loaded == 2) ovlp_loaded = 0;
     ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
 
-    build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf, 
-        R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round, 
-        asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded);
+    // build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf, 
+    //     R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round, 
+    //     asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded);
 	destory_All_reads(&R_INF);
 	return 0;
 }

@@ -46,7 +46,8 @@ void reinit_All_reads(All_reads* r)
 {
 	r->read_length = (uint64_t*)realloc(r->read_length, sizeof(uint64_t)*r->index_size);
 	r->name_index = (uint64_t*)realloc(r->name_index, sizeof(uint64_t)*r->name_index_size);
-	r->name_index[r->total_reads0-1] = 0;
+	if(r->total_reads0>0) r->name_index[r->total_reads0] = 0;
+	else r->name_index[0]=0;
 }
 
 void destory_All_reads(All_reads* r)
@@ -854,6 +855,7 @@ void recover_UC_Read_RC(UC_Read* r, All_reads* R_INF, uint64_t ID)
 
 void ha_compress_base(uint8_t* dest, char* src, uint64_t src_l, uint64_t** N_site_lis, uint64_t N_site_occ)
 {
+	
 	///N_site_lis saves the pos of all Ns in this read
 	///N_site_lis[0] is the number of Ns
 	free((*N_site_lis));

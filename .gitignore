@@ -1,3 +1,11 @@
 .*.swp
 *.o
 *.json
+*.bin
+*.fq
+*.fastq
+*.gfa
+*.bed
+*.ct_flt
+*.pt_flt
+hifiasm

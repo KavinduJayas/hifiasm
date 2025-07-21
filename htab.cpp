@@ -759,7 +759,7 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 			}\
 		} else {\
 			while ((ret = kseq_read(p->ks)) >= 0) {\
-				int l = (int)(p->ks->seq.l) - (int)(p->opt->adaLen) - (int)(p->opt->adaLen);/*KJ:why not 2*adaLen? */\
+				int l = (int)(p->ks->seq.l) - (int)(p->opt->adaLen) - (int)(p->opt->adaLen);\
 				if((l <= 0) || (l < asm_opt.rl_cut)) continue;\
 				if((asm_opt.is_sc) && (asm_opt.sc_cut > 0) && (!flt_quals(p->ks->qual.s+p->opt->adaLen, l, 33, asm_opt.sc_cut))) continue;\
 				if (p->n_seq >= 1<<28) {\
@@ -769,18 +769,18 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 				if (p->rs_out) {\
 					/**for 0-th count, just insert read length to R_INF, instead of read**/\
 					if (p->flag & HAF_RS_WRITE_LEN) {\
-						assert(p->n_seq == p->rs_out->total_reads /*- p->rs_out->total_reads0*/);\
+						assert(p->n_seq == p->rs_out->total_reads);\
 						ha_insert_read_len(p->rs_out, l, p->ks->name.l);\
 					} else if (p->flag & HAF_RS_WRITE_SEQ) {\
 						int i, n_N;\
-						assert(l == (int)p->rs_out->read_length[p->n_seq /*+ p->rs_out->total_reads0*/]);\
+						assert(l == (int)p->rs_out->read_length[p->n_seq]);\
 						for (i = n_N = 0; i < l; ++i) /** count number of ambiguous bases**/\
 							if (seq_nt4_table[(uint8_t)p->ks->seq.s[i+p->opt->adaLen]] >= 4)\
 								++n_N;\
-						ha_compress_base(Get_READ(*p->rs_out, p->n_seq /*+ p->rs_out->total_reads0*/), p->ks->seq.s+p->opt->adaLen, l, &p->rs_out->N_site[p->n_seq /*+ p->rs_out->total_reads0*/], n_N);\
-						memcpy(&p->rs_out->name[p->rs_out->name_index[p->n_seq/*+p->rs_out->total_reads0*/]], p->ks->name.s, p->ks->name.l);\
+						ha_compress_base(Get_READ(*p->rs_out, p->n_seq), p->ks->seq.s+p->opt->adaLen, l, &p->rs_out->N_site[p->n_seq], n_N);\
+						memcpy(&p->rs_out->name[p->rs_out->name_index[p->n_seq]], p->ks->name.s, p->ks->name.l);\
 						if(p->rs_out->rsc) {\
-							ha_compress_qual(Get_QUAL(*p->rs_out, p->n_seq /*+ p->rs_out->total_reads0*/), p->ks->qual.s+p->opt->adaLen, l, sc_bn, 33);\
+							ha_compress_qual(Get_QUAL(*p->rs_out, p->n_seq), p->ks->qual.s+p->opt->adaLen, l, sc_bn, 33);\
 							/**print_fastq(NULL, p->ks->name.s, p->ks->seq.s, p->ks->qual.s, (1<<sc_bn), 33);**/\
 							/**if(l <= 1000000) {\
 								convert_qual(src_a, p->ks->qual.s+p->opt->adaLen, l, (1<<sc_bn), 0, 33);\
@@ -976,6 +976,9 @@ static ha_ct_t *yak_count(const yak_copt_t *opt, const char *fn, int flag, ha_pt
 		gzclose(fp);
 	}
 	*n_seq = pl.n_seq;
+	
+	fprintf(stderr, "[M::%s] n_seq: %ld\n", __func__, (long)pl.n_seq);
+	fprintf(stderr, "[M::%s] rs->total_reads: %ld\n", __func__, (long)rs->total_reads);
 	if (pl.opt->w > 1) fprintf(stderr, "[M::%s] collected %ld minimizers\n", __func__, (long)pl.n_mz);
 	return pl.ct;
 }
@@ -983,7 +986,8 @@ static ha_ct_t *yak_count(const yak_copt_t *opt, const char *fn, int flag, ha_pt
 ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, ha_pt_t *p0, const void *flt_tab, All_reads *rs, ma_utg_v *us, int keep_adapter, int *low_freq, int unique_only)
 {
 	int i;
-	int64_t n_seq = 0;
+	int64_t n_seq=0; 
+	// int64_t n_seq = R_INF.total_reads0; 
 	uint64_t n_bs = 0;
 	yak_copt_t opt;
 	ha_ct_t *h = 0;
@@ -994,7 +998,11 @@ ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, h
 			if(asm_opt.continue_from_prev_state==0)
 			init_All_reads(rs);
 			else
-			reinit_All_reads(rs);
+			{
+				reinit_All_reads(rs);
+				rs->total_reads=0;
+
+			}
 		}else if (flag & HAF_RS_WRITE_SEQ){
 			if(asm_opt.continue_from_prev_state==0) {
 				malloc_All_reads(rs);
@@ -1247,7 +1255,7 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 	//KJ: read_from_store = 1 either after the initial round or if reads are loaded with verbose gfa
 	if (read_from_store) {///if reads have already been read
 		extra_flag1 = extra_flag2 = HAF_RS_READ;
-	} else if (rs->total_reads == 0) {///if reads & length have not been scanned
+	} else if (rs->total_reads == 0 || (asm_opt->continue_from_prev_state && rs->total_reads0 == rs->total_reads)) {///if reads & length have not been scanned
 		extra_flag1 = HAF_RS_WRITE_LEN;
 		extra_flag2 = HAF_RS_WRITE_SEQ;
 	} else {///if length has been loaded but reads have not
