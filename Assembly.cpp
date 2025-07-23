@@ -2083,7 +2083,7 @@ int ha_assemble(void)
 		// construct hash table for high occurrence k-mers
 		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) 
         {
-            //R_INF.total_reads=0;
+            R_INF.total_reads=0;
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}

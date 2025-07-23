@@ -766,7 +766,7 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 					fprintf(stderr, "ERROR: this implementation supports no more than %d reads\n", 1<<28);\
 					exit(1);\
 				}\
-				if (p->rs_out) {\
+				if (p->rs_out && p->n_seq >= p->rs_out->total_reads0) {\
 					/**for 0-th count, just insert read length to R_INF, instead of read**/\
 					if (p->flag & HAF_RS_WRITE_LEN) {\
 						assert(p->n_seq == p->rs_out->total_reads);\
@@ -986,6 +986,7 @@ static ha_ct_t *yak_count(const yak_copt_t *opt, const char *fn, int flag, ha_pt
 ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, ha_pt_t *p0, const void *flt_tab, All_reads *rs, ma_utg_v *us, int keep_adapter, int *low_freq, int unique_only)
 {
 	int i;
+	int64_t rl_cut = asm_opt.rl_cut;
 	int64_t n_seq=0; 
 	// int64_t n_seq = R_INF.total_reads0; 
 	uint64_t n_bs = 0;
@@ -1000,7 +1001,7 @@ ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, h
 			else
 			{
 				reinit_All_reads(rs);
-				rs->total_reads=0;
+				// rs->total_reads=0;
 
 			}
 		}else if (flag & HAF_RS_WRITE_SEQ){
@@ -1036,6 +1037,8 @@ ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, h
 	}**/
 	///asm_opt->num_reads is the number of fastq files
 	for (i = 0; i < (us?1:asm_o->num_reads); ++i){
+		if(asm_opt.continue_from_prev_state && i==0) asm_opt.rl_cut=0;
+		else if(asm_opt.continue_from_prev_state && i!=0) asm_opt.rl_cut=rl_cut;
 		h = yak_count(&opt, asm_o->read_file_names[i], flag|HAF_CREATE_NEW, p0, h, flt_tab, rs, us, &n_seq);
 		if(h) n_bs += h->bs;
 	}
