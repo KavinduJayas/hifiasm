@@ -129,6 +129,187 @@ uint64_t h_ec_lchain_re_chn(ha_abuf_t *ab, uint64_t si, uint64_t ei, uint32_t ri
 overlap_region* h_ec_lchain_fast(ha_abuf_t *ab, uint32_t rid, UC_Read *qu, UC_Read *tu, uint64_t mz_w, uint64_t mz_k, All_reads *rref, overlap_region_alloc *ol, Candidates_list *cl, bit_extz_t *exz, asg16_v *buf, asg64_v *srt_i, double bw_thres, 
 								 int apend_be, kvec_t_u8_warp* k_flag, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ, uint32_t is_accurate, uint32_t gen_off, int64_t enable_mcopy, double mcopy_rate, uint32_t mcopy_khit_cut, ma_hit_t_alloc *in0, ma_hit_t_alloc *in1, double sh);
 void h_ec_lchain_fast_new(ha_abuf_t *ab, uint32_t rid, UC_Read *qu, UC_Read *tu, All_reads *rref, overlap_region_alloc *ol, Candidates_list *cl, bit_extz_t *exz, asg16_v *buf, asg64_v *srt_i, ma_hit_t_alloc *in0, ma_hit_t_alloc *in1, double sh);
+void write_cc_v_all(char* output_file_name);
+int load_cc_v_all(char* output_file_name);
+void destory_cc_v_all();
+
+
+void write_cc_v(cc_v* x, FILE* fp)
+{
+    fwrite(&x->n, sizeof(x->n), 1, fp);
+    fwrite(&x->m, sizeof(x->m), 1, fp);
+    
+    if(x->n > 0 && x->a != NULL) {
+        for(size_t i = 0; i < x->n; i++) {
+            fwrite(&x->a[i].n, sizeof(x->a[i].n), 1, fp);
+            fwrite(&x->a[i].m, sizeof(x->a[i].m), 1, fp);
+            if(x->a[i].n > 0 && x->a[i].a != NULL) {
+                fwrite(x->a[i].a, sizeof(uint16_t), x->a[i].n, fp);
+            }
+        }
+    }
+    
+    if(x->n > 0 && x->f != NULL) {
+        fwrite(x->f, sizeof(uint8_t), x->n, fp);
+    }
+}
+
+int load_cc_v(cc_v* x, FILE* fp)
+{
+    if(fread(&x->n, sizeof(x->n), 1, fp) != 1) return 0;
+    if(fread(&x->m, sizeof(x->m), 1, fp) != 1) return 0;
+    
+    x->a = NULL;
+    x->f = NULL;
+    
+    if(x->n > 0) {
+        CALLOC(x->a, x->n);
+        for(size_t i = 0; i < x->n; i++) {
+            if(fread(&x->a[i].n, sizeof(x->a[i].n), 1, fp) != 1) return 0;
+            if(fread(&x->a[i].m, sizeof(x->a[i].m), 1, fp) != 1) return 0;
+            
+            x->a[i].a = NULL;
+            if(x->a[i].n > 0) {
+                CALLOC(x->a[i].a, x->a[i].n);
+                if(fread(x->a[i].a, sizeof(uint16_t), x->a[i].n, fp) != x->a[i].n) return 0;
+            }
+        }
+        
+        CALLOC(x->f, x->n);
+        if(fread(x->f, sizeof(uint8_t), x->n, fp) != x->n) return 0;
+    }
+    
+    return 1;
+}
+
+void write_cc_v_all(char* output_file_name)
+{
+    char* cc_name = (char*)malloc(strlen(output_file_name) + 25);
+    FILE* output_file = NULL;
+    
+    // Write scc
+    sprintf(cc_name, "%s.scc.bin", output_file_name);
+    output_file = fopen(cc_name, "wb");
+    if(output_file == NULL) {
+        fprintf(stderr, "ERROR: Cannot write scc file: %s\n", cc_name);
+        free(cc_name);
+        return;
+    }
+    write_cc_v(&scc, output_file);
+    fclose(output_file);
+    
+    // Write scb
+    sprintf(cc_name, "%s.scb.bin", output_file_name);
+    output_file = fopen(cc_name, "wb");
+    if(output_file == NULL) {
+        fprintf(stderr, "ERROR: Cannot write scb file: %s\n", cc_name);
+        free(cc_name);
+        return;
+    }
+    write_cc_v(&scb, output_file);
+    fclose(output_file);
+    
+    // Write sca
+    sprintf(cc_name, "%s.sca.bin", output_file_name);
+    output_file = fopen(cc_name, "wb");
+    if(output_file == NULL) {
+        fprintf(stderr, "ERROR: Cannot write sca file: %s\n", cc_name);
+        free(cc_name);
+        return;
+    }
+    write_cc_v(&sca, output_file);
+    fclose(output_file);
+    
+    free(cc_name);
+    if(VERBOSE >= 1) {
+        fprintf(stderr, "[M::%s] ==> written cc_v structures to disk\n", __func__);
+    }
+}
+
+int load_cc_v_all(char* output_file_name)
+{
+    char* cc_name = (char*)malloc(strlen(output_file_name) + 25);
+    FILE* input_file = NULL;
+    int success = 1;
+    
+    // Load scc
+    sprintf(cc_name, "%s.scc.bin", output_file_name);
+    input_file = fopen(cc_name, "rb");
+    if(input_file == NULL) {
+        fprintf(stderr, "ERROR: Cannot read scc file: %s\n", cc_name);
+        success = 0;
+    } else {
+        if(!load_cc_v(&scc, input_file)) {
+            fprintf(stderr, "ERROR: Failed to load scc data\n");
+            success = 0;
+        }
+        fclose(input_file);
+    }
+    
+    // Load scb
+    if(success) {
+        sprintf(cc_name, "%s.scb.bin", output_file_name);
+        input_file = fopen(cc_name, "rb");
+        if(input_file == NULL) {
+            fprintf(stderr, "ERROR: Cannot read scb file: %s\n", cc_name);
+            success = 0;
+        } else {
+            if(!load_cc_v(&scb, input_file)) {
+                fprintf(stderr, "ERROR: Failed to load scb data\n");
+                success = 0;
+            }
+            fclose(input_file);
+        }
+    }
+    
+    // Load sca
+    if(success) {
+        sprintf(cc_name, "%s.sca.bin", output_file_name);
+        input_file = fopen(cc_name, "rb");
+        if(input_file == NULL) {
+            fprintf(stderr, "ERROR: Cannot read sca file: %s\n", cc_name);
+            success = 0;
+        } else {
+            if(!load_cc_v(&sca, input_file)) {
+                fprintf(stderr, "ERROR: Failed to load sca data\n");
+                success = 0;
+            }
+            fclose(input_file);
+        }
+    }
+    
+    free(cc_name);
+    if(success && VERBOSE >= 1) {
+        fprintf(stderr, "[M::%s] ==> loaded cc_v structures from disk\n", __func__);
+    }
+    
+    return success;
+}
+
+void destory_cc_v(cc_v* x)
+{
+    if(x->a != NULL) {
+        for(size_t i = 0; i < x->n; i++) {
+            if(x->a[i].a != NULL) {
+                free(x->a[i].a);
+            }
+        }
+        free(x->a);
+        x->a = NULL;
+    }
+    if(x->f != NULL) {
+        free(x->f);
+        x->f = NULL;
+    }
+    x->n = x->m = 0;
+}
+
+void destory_cc_v_all()
+{
+    destory_cc_v(&scc);
+    destory_cc_v(&scb);
+    destory_cc_v(&sca);
+}
 
 ec_ovec_buf_t* gen_ec_ovec_buf_t(uint32_t n)
 {

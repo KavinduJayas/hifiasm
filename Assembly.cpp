@@ -1034,7 +1034,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 
     // exit(1);
 
-
+    if(asm_opt.write_index_to_disk) write_cc_v_all(asm_opt.output_file_name);
     if (asm_opt.required_read_name) prt_dbg_rs(R_INF_FLAG.fp_r0, &R_INF_FLAG, 0); // for debugging only
     
 	// save corrected reads to R_INF
