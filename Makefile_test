@@ -1,0 +1,15 @@
+# Add this to the existing Makefile or create a separate test Makefile
+
+# Test executable for cc_v I/O
+test_cc_v_io: test_cc_v_io.cpp ecovlp.cpp
+	$(CXX) $(CXXFLAGS) -DTEST_BUILD -o test_cc_v_io test_cc_v_io.cpp ecovlp.cpp $(LDFLAGS)
+
+# Run the test
+test: test_cc_v_io
+	./test_cc_v_io
+
+# Clean test files
+clean_test:
+	rm -f test_cc_v_io test_*.bin
+
+.PHONY: test clean_test

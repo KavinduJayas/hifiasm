@@ -1013,7 +1013,11 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     het_cnt = NULL;
     if(round == asm_opt.number_of_round-1 && asm_opt.is_dbg_het_cnt) CALLOC(het_cnt, R_INF.total_reads);
 
-    if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+    if (r_out) 
+    {
+        write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+        write_cc_v_all(asm_opt.output_file_name);
+    }
 
     // Output_corrected_fastq();
 
@@ -1033,8 +1037,6 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     }
 
     // exit(1);
-
-    if(asm_opt.write_index_to_disk) write_cc_v_all(asm_opt.output_file_name);
     if (asm_opt.required_read_name) prt_dbg_rs(R_INF_FLAG.fp_r0, &R_INF_FLAG, 0); // for debugging only
     
 	// save corrected reads to R_INF
@@ -2059,8 +2061,12 @@ int ha_assemble(void)
     // quick_debug_phasing(MC_NAME);
 	extern void ha_extract_print_list(const All_reads *rs, int n_rounds, const char *o);
 	int r, hom_cov = -1, ovlp_loaded = 0; uint64_t tot_b, tot_e;
-	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name)) {
+	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name) && load_cc_v_all(asm_opt.output_file_name)) {
 		ovlp_loaded = 1;
+        fprintf(stderr, "\nloaded_ccv\n\n");
+        write_cc_v_all("testing.ccv");
+        fprintf(stderr, "\nwritten_loaded_ccv\n\n");
+        exit(0);
 		fprintf(stderr, "[M::%s::%.3f*%.2f] ==> loaded corrected reads and overlaps from disk\n", __func__, yak_realtime(), yak_cpu_usage());
 		if (asm_opt.extract_list) {
 			ha_extract_print_list(&R_INF, asm_opt.extract_iter, asm_opt.extract_list);
@@ -2074,6 +2080,7 @@ int ha_assemble(void)
         if (asm_opt.het_cov == -1024) hap_recalculate_peaks(asm_opt.output_file_name), ovlp_loaded = 2;
 	}
 	if (!ovlp_loaded) {
+        exit(1);
         ha_flt_tab = ha_idx = NULL;
         if((asm_opt.flag & HA_F_VERBOSE_GFA)) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
 
@@ -2114,6 +2121,7 @@ int ha_assemble(void)
 
         // exit(1);
 	}
+    exit(1);
     if(ovlp_loaded == 2) ovlp_loaded = 0;
     ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
 
