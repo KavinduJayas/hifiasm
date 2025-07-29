@@ -23567,17 +23567,17 @@ uint32_t load_yak_binning(hifiasm_opt_t *opt, char *ou)///asm_opt
 void write_all_data_to_disk(ma_hit_t_alloc* sources, ma_hit_t_alloc* reverse_sources, All_reads *RNF, char* output_file_name)
 {   
 	char* gfa_name = (char*)malloc(strlen(output_file_name)+25);
-	sprintf(gfa_name, "%s.ec", output_file_name);
+	sprintf(gfa_name, "%s.new.ec", output_file_name);
 	write_All_reads(RNF, gfa_name);
 
     if((ha_opt_triobin(&asm_opt)) && (asm_opt.fn_bin_yak[0] && asm_opt.fn_bin_yak[1])) {
         write_yak_binning(asm_opt.output_file_name, asm_opt.fn_bin_yak[0], asm_opt.fn_bin_yak[1]);
     }
 
-	sprintf(gfa_name, "%s.ovlp.source", output_file_name);
+	sprintf(gfa_name, "%s.new.ovlp.source", output_file_name);
 	write_ma_hit_ts(sources, RNF->total_reads, gfa_name);
 
-	sprintf(gfa_name, "%s.ovlp.reverse", output_file_name);
+	sprintf(gfa_name, "%s.new.ovlp.reverse", output_file_name);
 	write_ma_hit_ts(reverse_sources, RNF->total_reads, gfa_name);
 
 	free(gfa_name);

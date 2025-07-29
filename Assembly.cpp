@@ -887,7 +887,7 @@ void Output_corrected_reads()
     UC_Read g_read;
     init_UC_Read(&g_read);
     char* gfa_name = (char*)malloc(strlen(asm_opt.output_file_name)+35);
-    sprintf(gfa_name, "%s.ec.fa", asm_opt.output_file_name);
+    sprintf(gfa_name, "%s.new.ec.fa", asm_opt.output_file_name);
     FILE* output_file = fopen(gfa_name, "w");
     free(gfa_name);
 
@@ -910,7 +910,7 @@ void Output_corrected_fastq()
     UC_Read g_read; asg8_v dv;
     init_UC_Read(&g_read); kv_init(dv);
     char* gfa_name = (char*)malloc(strlen(asm_opt.output_file_name)+35);
-    sprintf(gfa_name, "%s.ec.fq", asm_opt.output_file_name);
+    sprintf(gfa_name, "%s.new.ec.fq", asm_opt.output_file_name);
     FILE* fp = fopen(gfa_name, "w");
     free(gfa_name);
 
@@ -2101,10 +2101,10 @@ int ha_assemble(void)
 			// 		asm_opt.num_bases, asm_opt.num_corrected_bases, asm_opt.num_recorrected_bases);
 			// fprintf(stderr, "[M::%s] size of buffer: %.3fGB\n", __func__, asm_opt.mem_buf / 1073741824.0);
 		}
-		// if (asm_opt.flag & HA_F_WRITE_EC) {
-        //     if(asm_opt.is_sc) Output_corrected_fastq();
-        //     else Output_corrected_reads();
-        // }
+		if (asm_opt.flag & HA_F_WRITE_EC) {
+            if(asm_opt.is_sc) Output_corrected_fastq();
+            else Output_corrected_reads();
+        }
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
 		// ha_overlap_final();
@@ -2121,9 +2121,9 @@ int ha_assemble(void)
     if(ovlp_loaded == 2) ovlp_loaded = 0;
     ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
 
-    // build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf, 
-    //     R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round, 
-    //     asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded);
+    build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf, 
+        R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round, 
+        asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded);
 	destory_All_reads(&R_INF);
 	return 0;
 }

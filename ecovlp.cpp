@@ -6289,7 +6289,7 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
         sl_ec_r(n_thre, n_a);
     }
 
-    cal_update_ec_multiple(b, n_thre, n_a);///update overlaps
+    //cal_update_ec_multiple(b, n_thre, n_a);///update overlaps
 
     // if(is_sv) kt_for(n_thre, worker_hap_dc_ec, b, n_a);///update overlaps
     
