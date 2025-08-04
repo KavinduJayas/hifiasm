@@ -3,6 +3,7 @@
 *.json
 *.bin
 *.fq
+*.fa
 *.fastq
 *.gfa
 *.bed
