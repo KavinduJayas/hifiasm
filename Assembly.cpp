@@ -998,7 +998,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 	int hom_cov, het_cov, r_out = 0;
     ha_flt_tab_hp = ha_idx_hp = NULL; (*tot_b) = (*tot_e) = 0;
 
-    if((ha_idx == NULL)&&(asm_opt.flag & HA_F_VERBOSE_GFA)&&(round == asm_opt.number_of_round - 1)) r_out = 1;
+    if((ha_idx == NULL)/*&&(asm_opt.flag & HA_F_VERBOSE_GFA)*/&&(round == asm_opt.number_of_round - 1)) r_out = 1;
 
     if(asm_opt.required_read_name) init_Debug_reads(&R_INF_FLAG, asm_opt.required_read_name); // for debugging only
     
@@ -1017,6 +1017,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     {
         write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
         write_cc_v_all(asm_opt.output_file_name);
+        exit(0);
     }
 
     // Output_corrected_fastq();
@@ -2061,7 +2062,8 @@ int ha_assemble(void)
     // quick_debug_phasing(MC_NAME);
 	extern void ha_extract_print_list(const All_reads *rs, int n_rounds, const char *o);
 	int r, hom_cov = -1, ovlp_loaded = 0; uint64_t tot_b, tot_e;
-	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name) && load_cc_v_all(asm_opt.output_file_name)) {
+	if (asm_opt.load_index_from_disk  ) {
+        load_cc_v_all(asm_opt.output_file_name);
 		ovlp_loaded = 1;
         fprintf(stderr, "\nloaded_ccv\n\n");
         write_cc_v_all("testing.ccv");
@@ -2080,7 +2082,7 @@ int ha_assemble(void)
         if (asm_opt.het_cov == -1024) hap_recalculate_peaks(asm_opt.output_file_name), ovlp_loaded = 2;
 	}
 	if (!ovlp_loaded) {
-        exit(1);
+    if (asm_opt.load_index_from_disk ) exit(1);
         ha_flt_tab = ha_idx = NULL;
         if((asm_opt.flag & HA_F_VERBOSE_GFA)) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
 

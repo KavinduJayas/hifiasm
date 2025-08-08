@@ -137,18 +137,22 @@ void write_cc_v(cc_v* x, FILE* fp)
     fwrite(&x->n, sizeof(x->n), 1, fp);
     fwrite(&x->m, sizeof(x->m), 1, fp);
     
-    if(x->n > 0 && x->a != NULL) {
-        for(size_t i = 0; i < x->n; i++) {
-            fwrite(&x->a[i].n, sizeof(x->a[i].n), 1, fp);
-            fwrite(&x->a[i].m, sizeof(x->a[i].m), 1, fp);
-            if(x->a[i].n > 0 && x->a[i].a != NULL) {
-                fwrite(x->a[i].a, sizeof(uint16_t), x->a[i].n, fp);
+    if(x->n > 0){
+        if( x->a != NULL) {
+            for(size_t i = 0; i < x->n; i++) {
+                fwrite(&x->a[i].n, sizeof(x->a[i].n), 1, fp);
+                fwrite(&x->a[i].m, sizeof(x->a[i].m), 1, fp);
+                if(x->a[i].n > 0 && x->a[i].a != NULL) {
+                    fwrite(x->a[i].a, sizeof(uint16_t), x->a[i].n, fp);
+                }
             }
         }
-    }
-    
-    if(x->n > 0 && x->f != NULL) {
-        fwrite(x->f, sizeof(uint8_t), x->n, fp);
+        uint8_t is_f_null = (x->f == NULL) ? 1 : 0;
+
+        fwrite(&is_f_null, sizeof(is_f_null), 1, fp);
+        if(!is_f_null) {
+            fwrite(x->f, sizeof(uint8_t), x->n, fp);
+        }
     }
 }
 
@@ -172,9 +176,13 @@ int load_cc_v(cc_v* x, FILE* fp)
                 if(fread(x->a[i].a, sizeof(uint16_t), x->a[i].n, fp) != x->a[i].n) return 0;
             }
         }
-        
-        CALLOC(x->f, x->n);
-        if(fread(x->f, sizeof(uint8_t), x->n, fp) != x->n) return 0;
+
+        uint8_t is_f_null;
+       if(fread(&is_f_null, sizeof(is_f_null), 1, fp) != 1) return 0;
+       if(!is_f_null) {
+           CALLOC(x->f, x->n);
+           if(fread(x->f, sizeof(uint8_t), x->n, fp) != x->n) return 0;//KJ: this fails if x->f was NULL but x->n was > 0 when writing
+       }
     }
     
     return 1;
@@ -3496,7 +3504,7 @@ static void worker_hap_ec(void *data, long i, int tid)
     //     fprintf(stderr, "[M::%s] rid::%ld\t%.*s\n\n", __func__, i, (int)Get_NAME_LENGTH(R_INF, i), Get_NAME(R_INF, i));
     // }
 
-    push_ne_ovlp(&(R_INF.paf[i]), &b->olist, 1, &R_INF, &(scc.a[i])/**, i, &b->self_read, &b->ovlp_read**/);
+    push_ne_ovlp(&(R_INF.paf[i]), &b->olist, 1, &R_INF, &(scc.a[i])/**, i, &b->self_read, &b->ovlp_read**/);//KJ:scc is used just for calculating stats
     push_ne_ovlp(&(R_INF.reverse_paf[i]), &b->olist, 2, &R_INF, NULL/**, i, NULL, NULL**/);
 
 
