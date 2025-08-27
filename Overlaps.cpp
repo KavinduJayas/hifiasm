@@ -1632,7 +1632,7 @@ uint32_t qn, uint32_t tn)
     for (i = 0; i < x->length; i++)
     {
         if(x->buffer[i].del) continue;
-        if(coverage_cut[Get_qn(x->buffer[i])].del) continue;
+        if(coverage_cut[Get_qn(x->buffer[i])].del) continue;//KJ: coverage_cut[Get_qn(x->buffer[i])] -->segfault @ i=48, (qns=18446744073709551615)>>32
         if(coverage_cut[Get_tn(x->buffer[i])].del) continue;
 
         if(Get_tn(x->buffer[i])==tn 
@@ -39706,8 +39706,8 @@ long long bubble_dist, int read_graph, int write)
     }
     if (asm_opt.write_index_to_disk && write)
     {
-        write_all_data_to_disk(sources, reverse_sources, 
-        &R_INF, output_file_name);
+        // write_all_data_to_disk(sources, reverse_sources, 
+        // &R_INF, output_file_name);
     }
     ///debug_info_of_specfic_read("m64011_190830_220126/31720629/ccs", sources, reverse_sources, -1, "beg");
 

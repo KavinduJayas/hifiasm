@@ -130,6 +130,192 @@ overlap_region* h_ec_lchain_fast(ha_abuf_t *ab, uint32_t rid, UC_Read *qu, UC_Re
 								 int apend_be, kvec_t_u8_warp* k_flag, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ, uint32_t is_accurate, uint32_t gen_off, int64_t enable_mcopy, double mcopy_rate, uint32_t mcopy_khit_cut, ma_hit_t_alloc *in0, ma_hit_t_alloc *in1, double sh);
 void h_ec_lchain_fast_new(ha_abuf_t *ab, uint32_t rid, UC_Read *qu, UC_Read *tu, All_reads *rref, overlap_region_alloc *ol, Candidates_list *cl, bit_extz_t *exz, asg16_v *buf, asg64_v *srt_i, ma_hit_t_alloc *in0, ma_hit_t_alloc *in1, double sh);
 
+
+void write_cc_v(cc_v* x, FILE* fp)
+{
+    fwrite(&x->n, sizeof(x->n), 1, fp);
+    fwrite(&x->m, sizeof(x->m), 1, fp);
+    
+    if(x->n > 0){
+        if( x->a != NULL) {
+            for(size_t i = 0; i < x->n; i++) {
+                fwrite(&x->a[i].n, sizeof(x->a[i].n), 1, fp);
+                fwrite(&x->a[i].m, sizeof(x->a[i].m), 1, fp);
+                if(x->a[i].n > 0 && x->a[i].a != NULL) {
+                    fwrite(x->a[i].a, sizeof(uint16_t), x->a[i].n, fp);
+                }
+            }
+        }
+        uint8_t is_f_null = (x->f == NULL) ? 1 : 0;
+
+        fwrite(&is_f_null, sizeof(is_f_null), 1, fp);
+        if(!is_f_null) {
+            fwrite(x->f, sizeof(uint8_t), x->n, fp);
+        }
+    }
+}
+
+int load_cc_v(cc_v* x, FILE* fp)
+{
+    if(fread(&x->n, sizeof(x->n), 1, fp) != 1) return 0;
+    if(fread(&x->m, sizeof(x->m), 1, fp) != 1) return 0;
+    
+    x->a = NULL;
+    x->f = NULL;
+    
+    if(x->n > 0) {
+        CALLOC(x->a, x->n);
+        for(size_t i = 0; i < x->n; i++) {
+            if(fread(&x->a[i].n, sizeof(x->a[i].n), 1, fp) != 1) return 0;
+            if(fread(&x->a[i].m, sizeof(x->a[i].m), 1, fp) != 1) return 0;
+            
+            x->a[i].a = NULL;
+            if(x->a[i].n > 0) {
+                CALLOC(x->a[i].a, x->a[i].n);
+                if(fread(x->a[i].a, sizeof(uint16_t), x->a[i].n, fp) != x->a[i].n) return 0;
+            }
+        }
+
+        uint8_t is_f_null;
+       if(fread(&is_f_null, sizeof(is_f_null), 1, fp) != 1) return 0;
+       if(!is_f_null) {
+           CALLOC(x->f, x->n);
+           if(fread(x->f, sizeof(uint8_t), x->n, fp) != x->n) return 0;//KJ: this fails if x->f was NULL but x->n was > 0 when writing
+       }
+    }
+    
+    return 1;
+}
+
+void write_cc_v_all(char* output_file_name)
+{
+    char* cc_name = (char*)malloc(strlen(output_file_name) + 25);
+    FILE* output_file = NULL;
+    
+    // Write scc
+    sprintf(cc_name, "%s.scc.bin", output_file_name);
+    output_file = fopen(cc_name, "wb");
+    if(output_file == NULL) {
+        fprintf(stderr, "ERROR: Cannot write scc file: %s\n", cc_name);
+        free(cc_name);
+        return;
+    }
+    write_cc_v(&scc, output_file);
+    fclose(output_file);
+    
+    // Write scb
+    sprintf(cc_name, "%s.scb.bin", output_file_name);
+    output_file = fopen(cc_name, "wb");
+    if(output_file == NULL) {
+        fprintf(stderr, "ERROR: Cannot write scb file: %s\n", cc_name);
+        free(cc_name);
+        return;
+    }
+    write_cc_v(&scb, output_file);
+    fclose(output_file);
+    
+    // Write sca
+    sprintf(cc_name, "%s.sca.bin", output_file_name);
+    output_file = fopen(cc_name, "wb");
+    if(output_file == NULL) {
+        fprintf(stderr, "ERROR: Cannot write sca file: %s\n", cc_name);
+        free(cc_name);
+        return;
+    }
+    write_cc_v(&sca, output_file);
+    fclose(output_file);
+    
+    free(cc_name);
+    if(VERBOSE >= 1) {
+        fprintf(stderr, "[M::%s] ==> written cc_v structures to disk\n", __func__);
+    }
+}
+
+int load_cc_v_all(char* output_file_name)
+{
+    char* cc_name = (char*)malloc(strlen(output_file_name) + 25);
+    FILE* input_file = NULL;
+    int success = 1;
+    
+    // Load scc
+    sprintf(cc_name, "%s.scc.bin", output_file_name);
+    input_file = fopen(cc_name, "rb");
+    if(input_file == NULL) {
+        fprintf(stderr, "ERROR: Cannot read scc file: %s\n", cc_name);
+        success = 0;
+    } else {
+        if(!load_cc_v(&scc, input_file)) {
+            fprintf(stderr, "ERROR: Failed to load scc data\n");
+            success = 0;
+        }
+        fclose(input_file);
+    }
+    
+    // Load scb
+    if(success) {
+        sprintf(cc_name, "%s.scb.bin", output_file_name);
+        input_file = fopen(cc_name, "rb");
+        if(input_file == NULL) {
+            fprintf(stderr, "ERROR: Cannot read scb file: %s\n", cc_name);
+            success = 0;
+        } else {
+            if(!load_cc_v(&scb, input_file)) {
+                fprintf(stderr, "ERROR: Failed to load scb data\n");
+                success = 0;
+            }
+            fclose(input_file);
+        }
+    }
+    
+    // Load sca
+    if(success) {
+        sprintf(cc_name, "%s.sca.bin", output_file_name);
+        input_file = fopen(cc_name, "rb");
+        if(input_file == NULL) {
+            fprintf(stderr, "ERROR: Cannot read sca file: %s\n", cc_name);
+            success = 0;
+        } else {
+            if(!load_cc_v(&sca, input_file)) {
+                fprintf(stderr, "ERROR: Failed to load sca data\n");
+                success = 0;
+            }
+            fclose(input_file);
+        }
+    }
+    
+    free(cc_name);
+    if(success && VERBOSE >= 1) {
+        fprintf(stderr, "[M::%s] ==> loaded cc_v structures from disk\n", __func__);
+    }
+    
+    return success;
+}
+
+void destory_cc_v(cc_v* x)
+{
+    if(x->a != NULL) {
+        for(size_t i = 0; i < x->n; i++) {
+            if(x->a[i].a != NULL) {
+                free(x->a[i].a);
+            }
+        }
+        free(x->a);
+        x->a = NULL;
+    }
+    if(x->f != NULL) {
+        free(x->f);
+        x->f = NULL;
+    }
+    x->n = x->m = 0;
+}
+
+void destory_cc_v_all()
+{
+    destory_cc_v(&scc);
+    destory_cc_v(&scb);
+    destory_cc_v(&sca);
+}
+
 ec_ovec_buf_t* gen_ec_ovec_buf_t(uint32_t n)
 {
     uint32_t k; ec_ovec_buf_t0 *z = NULL;
@@ -3309,19 +3495,19 @@ static void worker_hap_ec(void *data, long i, int tid)
     b->cnt[1] += wcns_gen(&b->olist, &R_INF, &b->self_read, &b->ovlp_read, &b->exz, &b->pidx, &b->v64, &buf0, 0, 512, b->self_read.length, 3, 0.500001, aux_o, &b->v32, &b->cns, 256, i);
     copy_asg_arr(b->sp, buf0);
 
-    push_nec_re(aux_o, &(scc.a[i-R_INF.total_reads0]));
-    push_nec_re(aux_o, &(scb.a[i-R_INF.total_reads0]));
+    push_nec_re(aux_o, &(scc.a[i]));
+    push_nec_re(aux_o, &(scb.a[i]));
 
     // if((asm_opt.is_ont) && is_chemical_r_qual(&b->olist, &b->v64, qlen, 1, 16, &(b->v8q), i)/**(is_uncorrected_read(&b->olist, &b->v64, qlen, 1600))**/) {
     //     // b->olist.length = 0;
     //     fprintf(stderr, "[M::%s] rid::%ld\t%.*s\n\n", __func__, i, (int)Get_NAME_LENGTH(R_INF, i), Get_NAME(R_INF, i));
     // }
 
-    push_ne_ovlp(&(R_INF.paf[i]), &b->olist, 1, &R_INF, &(scc.a[i-R_INF.total_reads0])/**, i, &b->self_read, &b->ovlp_read**/);
+    push_ne_ovlp(&(R_INF.paf[i]), &b->olist, 1, &R_INF, &(scc.a[i])/**, i, &b->self_read, &b->ovlp_read**/);
     push_ne_ovlp(&(R_INF.reverse_paf[i]), &b->olist, 2, &R_INF, NULL/**, i, NULL, NULL**/);
 
 
-    check_well_cal(&(scc.a[i-R_INF.total_reads0]), &b->v64, &(R_INF.paf[i].is_fully_corrected), &(R_INF.paf[i].is_abnormal), qlen, (MIN_COVERAGE_THRESHOLD*2), &(R_INF.paf[i]));
+    check_well_cal(&(scc.a[i]), &b->v64, &(R_INF.paf[i].is_fully_corrected), &(R_INF.paf[i].is_abnormal), qlen, (MIN_COVERAGE_THRESHOLD*2), &(R_INF.paf[i]));
     R_INF.trio_flag[i] = AMBIGU;
 
     // uint32_t k;
@@ -5976,9 +6162,9 @@ static void worker_sl_ec(void *data, long i, int tid)
 
 
     ci = 0; xk = yk = 0; tot_e = 0;
-    while (ci < scc.a[i-R_INF.total_reads0].n) {
+    while (ci < scc.a[i].n) {
         // ci = pop_trace_bp(&scc.a[i], ci, &c, &b, &len);
-        ci = pop_trace_bp_f(&scc.a[i-R_INF.total_reads0], ci, &c, &bq, &bt, &len);
+        ci = pop_trace_bp_f(&scc.a[i], ci, &c, &bq, &bt, &len);
         if(c != 3) yk += len;
         if(c != 0) tot_e += len;
         // fprintf(stderr, "|%u%c(%c)", len, cm[c], ((c==1)||(c==2))?(cc[b]):('*')); // s_H
@@ -5994,10 +6180,10 @@ static void worker_sl_ec(void *data, long i, int tid)
     // cc[0] = 'A'; cc[1] = 'C'; cc[2] = 'G'; cc[3] = 'T';
 
     ci = 0; xk = yk = 0; Nn = 0;
-    while (ci < scc.a[i-R_INF.total_reads0].n) {
+    while (ci < scc.a[i].n) {
         wx[0] = xk; wy[0] = yk;
-        // ci = pop_trace_bp(&scc.a[i-R_INF.total_reads0], ci, &c, &b, &len);
-        ci = pop_trace_bp_f(&scc.a[i-R_INF.total_reads0], ci, &c, &bq, &bt, &len);
+        // ci = pop_trace_bp(&scc.a[i], ci, &c, &b, &len);
+        ci = pop_trace_bp_f(&scc.a[i], ci, &c, &bq, &bt, &len);
         if(c != 2) xk += len;
         if(c != 3) yk += len;
         wx[1] = xk; wy[1] = yk;
@@ -6047,9 +6233,9 @@ static void worker_sl_ec(void *data, long i, int tid)
     if(asm_opt.is_sc) {
         oa = p->q.a; na = p->a; 
         ci = 0; xk = yk = 0; Nn = 0;
-        while (ci < scc.a[i-R_INF.total_reads0].n) {
+        while (ci < scc.a[i].n) {
             wx[0] = xk; wy[0] = yk;
-            ci = pop_trace_bp_f(&scc.a[i-R_INF.total_reads0], ci, &c, &bq, &bt, &len);
+            ci = pop_trace_bp_f(&scc.a[i], ci, &c, &bq, &bt, &len);
             if(c != 2) xk += len;
             if(c != 3) yk += len;
             wx[1] = xk; wy[1] = yk;
@@ -6071,11 +6257,18 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
     uint64_t k, num_base = 0, num_correct = 0; (*r_base) = 0;
 
     if(!(scc.a)) {
-        scc.n = scc.m = n_a; CALLOC(scc.a, n_a); CALLOC(scc.f, n_a);
+        scc.n = scc.m = n_a+ R_INF.total_reads0; CALLOC(scc.a, scc.n); CALLOC(scc.f, scc.n);
     }
 
     if(!(scb.a)) {
-        scb.n = scb.m = n_a; CALLOC(scb.a, n_a);
+        scb.n = scb.m = n_a+ R_INF.total_reads0; CALLOC(scb.a, scb.n);
+    }
+
+    if(scc.a && scc.n < n_a + R_INF.total_reads0) {
+        scc.n = scc.m = n_a + R_INF.total_reads0; REALLOC(scc.a, scc.n); REALLOC(scc.f, scc.n);
+    }
+    if(scb.a && scb.n < n_a + R_INF.total_reads0) {
+        scb.n = scb.m = n_a + R_INF.total_reads0; REALLOC(scb.a, scb.n);
     }
 
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
@@ -6209,9 +6402,11 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
     if(round >= 0) {
         if(!(sca.a)) {
             sca.n = sca.m = n_a; CALLOC(sca.a, n_a);
-        }
         ////correct
-        
+        }else if(sca.n < n_a + R_INF.total_reads0) {
+            sca.n = sca.m = n_a + R_INF.total_reads0; REALLOC(sca.a, sca.n);//KJ: I don't expect sca.a to not be NULL
+        }
+
         for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
         
         kt_for(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix

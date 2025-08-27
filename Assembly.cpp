@@ -910,7 +910,7 @@ void Output_corrected_fastq()
     UC_Read g_read; asg8_v dv;
     init_UC_Read(&g_read); kv_init(dv);
     char* gfa_name = (char*)malloc(strlen(asm_opt.output_file_name)+35);
-    sprintf(gfa_name, "%s.new.ec.fq", asm_opt.output_file_name);
+    sprintf(gfa_name, "%s.ec.fq", asm_opt.output_file_name);
     FILE* fp = fopen(gfa_name, "w");
     free(gfa_name);
 
@@ -2059,7 +2059,7 @@ int ha_assemble(void)
     // quick_debug_phasing(MC_NAME);
 	extern void ha_extract_print_list(const All_reads *rs, int n_rounds, const char *o);
 	int r, hom_cov = -1, ovlp_loaded = 0; uint64_t tot_b, tot_e;
-	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name)) {
+	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name) && load_cc_v_all(asm_opt.output_file_name)) {
 		if (asm_opt.continue_from_prev_state == 0) {
             ovlp_loaded = 1;
         }
@@ -2083,7 +2083,6 @@ int ha_assemble(void)
 		// construct hash table for high occurrence k-mers
 		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) 
         {
-            R_INF.total_reads=0;
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}

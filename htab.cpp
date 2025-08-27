@@ -1009,6 +1009,7 @@ ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, h
 				malloc_All_reads(rs);
 			}else{
 				realloc_All_reads(rs);
+				// rs->total_reads=rs->total_reads0;
 			}
 		}
 			
