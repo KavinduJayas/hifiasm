@@ -46,8 +46,8 @@ void reinit_All_reads(All_reads* r)
 {
 	r->read_length = (uint64_t*)realloc(r->read_length, sizeof(uint64_t)*r->index_size);
 	r->name_index = (uint64_t*)realloc(r->name_index, sizeof(uint64_t)*r->name_index_size);
-	if(r->total_reads0>0) r->name_index[r->total_reads0] = 0;
-	else r->name_index[0]=0;
+	if(r->total_reads0==0)
+	r->name_index[0]=0;
 }
 
 void destory_All_reads(All_reads* r)
