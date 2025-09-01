@@ -44,6 +44,8 @@ void init_All_reads(All_reads* r)
 }
 void reinit_All_reads(All_reads* r)
 {
+	if (r->index_size < READ_INIT_NUMBER) r->index_size = READ_INIT_NUMBER;
+	if (r->name_index_size< READ_INIT_NUMBER) r->name_index_size= READ_INIT_NUMBER;
 	r->read_length = (uint64_t*)realloc(r->read_length, sizeof(uint64_t)*r->index_size);
 	r->name_index = (uint64_t*)realloc(r->name_index, sizeof(uint64_t)*r->name_index_size);
 	if(r->total_reads0==0)
