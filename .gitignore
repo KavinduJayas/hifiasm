@@ -1,4 +1,6 @@
 .*.swp
+*.sw*
+*test*
 *.o
 *.json
 *.bin
@@ -9,4 +11,9 @@
 *.bed
 *.ct_flt
 *.pt_flt
+*.sorted
+*diff
+*.py
+*.sh
+*.list
 hifiasm
