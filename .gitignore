@@ -12,7 +12,8 @@
 *.ct_flt
 *.pt_flt
 *.sorted
-*diff
+*diff*
+*paf
 *.py
 *.sh
 *.list
