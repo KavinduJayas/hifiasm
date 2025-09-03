@@ -6256,6 +6256,7 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
     double tt0 = yak_realtime_0();
     uint64_t k, num_base = 0, num_correct = 0; (*r_base) = 0;
 
+    //KJ: TODO: if continue_from_prev and total_reads0 >0 --> scc scb should not be NULL
     if(!(scc.a)) {
         scc.n = scc.m = n_a+ R_INF.total_reads0; CALLOC(scc.a, scc.n); CALLOC(scc.f, scc.n);
     }
@@ -6484,7 +6485,7 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
         sl_ec_r(n_thre, n_a);
     }
 
-    //cal_update_ec_multiple(b, n_thre, n_a);///update overlaps
+    cal_update_ec_multiple(b, n_thre, n_a);///update overlaps
 
     // if(is_sv) kt_for(n_thre, worker_hap_dc_ec, b, n_a);///update overlaps
     
