@@ -1044,7 +1044,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     if (asm_opt.required_read_name) destory_Debug_reads(&R_INF_FLAG), exit(0); // for debugging only
     ///debug_print_pob_regions();
 
-    if (r_out) write_cc_v_all(asm_opt.output_file_name);
+    if (round == asm_opt.number_of_round - 1) write_cc_v_all(asm_opt.output_file_name);
     // Output_corrected_reads();
 
     // exit(1);
@@ -2069,11 +2069,11 @@ int ha_assemble(void)
 			ha_extract_print_list(&R_INF, asm_opt.extract_iter, asm_opt.extract_list);
 			exit(0);
 		}
-		// if (asm_opt.flag & HA_F_WRITE_EC) {
-        //     if(asm_opt.is_sc) Output_corrected_fastq();
-        //     else Output_corrected_reads();
-        // }
-		// if (asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
+		if (asm_opt.flag & HA_F_WRITE_EC) {
+            if(asm_opt.is_sc) Output_corrected_fastq();
+            else Output_corrected_reads();
+        }
+		if (asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
         if (asm_opt.het_cov == -1024) hap_recalculate_peaks(asm_opt.output_file_name), ovlp_loaded = 2;
 	}
 	if (!ovlp_loaded) {
@@ -2103,7 +2103,7 @@ int ha_assemble(void)
 		}
 		if (asm_opt.flag & HA_F_WRITE_EC) {
             if(asm_opt.is_sc) Output_corrected_fastq();
-            // else Output_corrected_reads();
+            else Output_corrected_reads();
         }
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);

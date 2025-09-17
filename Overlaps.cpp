@@ -39706,8 +39706,8 @@ long long bubble_dist, int read_graph, int write)
     }
     if (asm_opt.write_index_to_disk && write)
     {
-        // write_all_data_to_disk(sources, reverse_sources, 
-        // &R_INF, output_file_name);
+        write_all_data_to_disk(sources, reverse_sources, 
+        &R_INF, output_file_name);
     }
     ///debug_info_of_specfic_read("m64011_190830_220126/31720629/ccs", sources, reverse_sources, -1, "beg");
 
