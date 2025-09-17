@@ -48,6 +48,7 @@ void reinit_All_reads(All_reads* r)
 	if (r->name_index_size< READ_INIT_NUMBER) r->name_index_size= READ_INIT_NUMBER;
 	r->read_length = (uint64_t*)realloc(r->read_length, sizeof(uint64_t)*r->index_size);
 	r->name_index = (uint64_t*)realloc(r->name_index, sizeof(uint64_t)*r->name_index_size);
+	r->dirty_reads = (uint8_t*)calloc(r->total_reads0, sizeof(uint8_t));
 	if(r->total_reads0==0)
 	r->name_index[0]=0;
 }
@@ -417,7 +418,6 @@ int destory_read_bin(All_reads* r)
 	free(r->second_round_cigar);
 	return 1;
 }
-volatile int debug;
 
 void ha_insert_read_len(All_reads *r, int read_len, int name_len)
 {
@@ -441,9 +441,6 @@ void ha_insert_read_len(All_reads *r, int read_len, int name_len)
 		}
 	}
 
-	if(r->total_reads==244027){
-		debug=0;
-	}
 	r->read_length[r->total_reads - 1] = read_len;
 	r->name_index[r->total_reads] = r->name_index[r->total_reads - 1] + name_len;
 }

@@ -1019,9 +1019,13 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 
 
     cal_ec_r(asm_opt.thread_num, round, num_pround, R_INF.total_reads-R_INF.total_reads0, (round == (asm_opt.number_of_round-1))?1:0, tot_b, tot_e);
+    if(asm_opt.continue_from_prev_state){//KJ: correct the old reads from new batch
+        cal_ec_r(asm_opt.thread_num, round, num_pround, R_INF.total_reads0, (round == (asm_opt.number_of_round-1))?1:0, tot_b, tot_e);
+    }
 
     // exit(1);    
 
+    R_INF.dirty_reads={0}; //KJ:reset for next round
     // if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
     if(des_idx) {
         ha_pt_destroy(ha_idx); ha_idx = NULL;

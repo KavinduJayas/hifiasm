@@ -12964,7 +12964,7 @@ uint32_t align_hc_ed_post_extz(overlap_region *z, All_reads *rref, char* qstr, c
         if(thre > THRESHOLD_MAX_SIZE) thre = THRESHOLD_MAX_SIZE;
         ///offset of y
         t_s = (q_s - z->x_pos_s) + z->y_pos_s;
-        t_s += y_start_offset(q_s, &(z->f_cigar));
+        t_s += y_start_offset(q_s, &(z->f_cigar));//KJ: overlap
 
         aln_l = q_l + (thre<<1); t_tot_l = Get_READ_LENGTH((*rref), z->y_id); 
         if(init_waln(thre, t_s, t_tot_l, aln_l, &aux_beg, &aux_end, &t_s, &t_pri_l)) {
@@ -12974,7 +12974,7 @@ uint32_t align_hc_ed_post_extz(overlap_region *z, All_reads *rref, char* qstr, c
             
             t_l = t_pri_l;
             // t_end = Reserve_Banded_BPM(t_string, aln_l, q_string, q_l, thre, &error);
-            ed_band_cal_semi_64_w_absent_diag(t_string, t_l, q_string, q_l, thre, aux_beg, exz);
+            ed_band_cal_semi_64_w_absent_diag(t_string, t_l, q_string, q_l, thre, aux_beg, exz);//KJ: banded edit distance calcluation
 
             // if(z->x_id == 5569 && z->y_id == 5557 && q_s == 10075 && q_e == 10849) {
             //     fprintf(stderr, "\n[M::%s::semi::t_s->%ld::t_pri_l->%ld::aux_beg->%ld::aux_end->%ld::thre->%ld] exz->ps::%d, exz->pe::%d, exz->ts::%d, exz->te::%d, exz->err::%d, exz->cigar.n::%d, thre::%ld\n", 
@@ -25699,7 +25699,7 @@ void gen_hc_r_alin_nec(overlap_region_alloc* ol, Candidates_list *cl, All_reads 
 
             // if(z->x_id == 19350 && z->y_id == 19324) fprintf(stderr, "-z-[M::%s] tid::%u\t%.*s\n", __func__, z->y_id, (int)Get_NAME_LENGTH(R_INF, z->y_id), Get_NAME(R_INF, z->y_id));
             
-            if(!align_hc_ed_post_extz(z, rref, qu->seq, tu->seq, exz, err, w.window_length, OVERLAP_THRESHOLD_HIFI_FILTER, 0, NULL)) continue;
+            if(!align_hc_ed_post_extz(z, rref, qu->seq, tu->seq, exz, err, w.window_length, OVERLAP_THRESHOLD_HIFI_FILTER, 0, NULL)) continue;//KJ:high confidence alignemnet with edit distance extention
 
             // if(z->x_id == 19350 && z->y_id == 19324) fprintf(stderr, "-m-[M::%s] tid::%u\t%.*s\n", __func__, z->y_id, (int)Get_NAME_LENGTH(R_INF, z->y_id), Get_NAME(R_INF, z->y_id));
 

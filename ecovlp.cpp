@@ -63,6 +63,7 @@ typedef struct {
 	ec_ovec_buf_t0 *a;
 	uint32_t n, rev;
     uint8_t *cr;
+    uint8_t prev_state_ec;
 } ec_ovec_buf_t;
 
 typedef struct {
@@ -193,7 +194,7 @@ void write_cc_v_all(char* output_file_name)
     FILE* output_file = NULL;
     
     // Write scc
-    sprintf(cc_name, "%s.scc.bin", output_file_name);
+    sprintf(cc_name, "%s.scc.new.bin", output_file_name);
     output_file = fopen(cc_name, "wb");
     if(output_file == NULL) {
         fprintf(stderr, "ERROR: Cannot write scc file: %s\n", cc_name);
@@ -204,7 +205,7 @@ void write_cc_v_all(char* output_file_name)
     fclose(output_file);
     
     // Write scb
-    sprintf(cc_name, "%s.scb.bin", output_file_name);
+    sprintf(cc_name, "%s.scb.n.bin", output_file_name);
     output_file = fopen(cc_name, "wb");
     if(output_file == NULL) {
         fprintf(stderr, "ERROR: Cannot write scb file: %s\n", cc_name);
@@ -2993,6 +2994,16 @@ inline uint64_t exact_ec_check(char *qstr, uint64_t ql, char *tstr, uint64_t tl,
     return 0;
 }
 
+void mark_hc_ovlp_dirty(overlap_region_alloc* ol, All_reads *rref){
+    uint32_t prev_read_hit; 
+    for(uint64_t i=0; i < ol->length;i++){
+       prev_read_hit = ol->list[i].y_id;
+       if(prev_read_hit < rref->total_reads0){
+        rref->dirty_reads[prev_read_hit]=1;
+       }
+    }
+}
+
 void gen_hc_r_alin_ea(overlap_region_alloc* ol, Candidates_list *cl, All_reads *rref, UC_Read* qu, UC_Read* tu, bit_extz_t *exz, overlap_region *aux_o, double e_rate, int64_t wl, int64_t rid, int64_t khit, int64_t move_gap, asg16_v *buf, asg64_v *srt, ma_hit_t_alloc *in, uint8_t chem_drop, double align_gap_rate, int64_t align_gap_max)
 {
     if(ol->length <= 0) return;
@@ -3043,7 +3054,7 @@ void gen_hc_r_alin_ea(overlap_region_alloc* ol, Candidates_list *cl, All_reads *
         ///debug for memory
         // snprintf(NULL, 0, "dwn::%u\tdcn::%u", (uint32_t)aux_o->w_list.n, (uint32_t)aux_o->w_list.c.n);
 
-        if(on > nec) {
+        if(on > nec) {//KJ: if there are non exact overlaps
             gen_hc_r_alin_nec(ol, cl, rref, qu, tu, exz, aux_o, e_rate, wl, rid, khit, move_gap, buf, chem_drop, align_gap_rate, align_gap_max);
         }
 
@@ -3424,6 +3435,10 @@ static void worker_hap_ec(void *data, long i, int tid)
     uint32_t low_occ = asm_opt.hom_cov * HA_KMER_GOOD_RATIO;
     overlap_region *aux_o = NULL; asg64_v buf0; uint32_t qlen = 0;
 
+    if(i==2196){
+        i++;
+        i--;
+    }
     /**
     if((i != 1129685) && (i != 1137865) && (i != 1137917) && (i != 1140647) && (i != 1144740) && (i != 1148936) && (i != 1149134) && (i != 1151224) && (i != 1151386) && (i != 1152960) && (i != 1154846) && (i != 1154881) && (i != 1155112) && 
         (i != 1156823) && (i != 1157099) && (i != 1157393) && (i != 1158300) && (i != 1158368) && (i != 1160411) && (i != 1160659) && (i != 1161458) && (i != 1163595) && (i != 1164084) && (i != 1164230) && (i != 1165050) && (i != 1168249) && 
@@ -3494,6 +3509,9 @@ static void worker_hap_ec(void *data, long i, int tid)
     copy_asg_arr(buf0, b->sp);
     b->cnt[1] += wcns_gen(&b->olist, &R_INF, &b->self_read, &b->ovlp_read, &b->exz, &b->pidx, &b->v64, &buf0, 0, 512, b->self_read.length, 3, 0.500001, aux_o, &b->v32, &b->cns, 256, i);
     copy_asg_arr(b->sp, buf0);
+
+    if (i>R_INF.total_reads0)
+        mark_hc_ovlp_dirty(&b->olist, &R_INF);
 
     push_nec_re(aux_o, &(scc.a[i]));
     push_nec_re(aux_o, &(scb.a[i]));
@@ -6257,24 +6275,32 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
     uint64_t k, num_base = 0, num_correct = 0; (*r_base) = 0;
 
     //KJ: TODO: if continue_from_prev and total_reads0 >0 --> scc scb should not be NULL
-    if(!(scc.a)) {
-        scc.n = scc.m = n_a+ R_INF.total_reads0; CALLOC(scc.a, scc.n); CALLOC(scc.f, scc.n);
-    }
+    if(!b->prev_state_ec){
+        if(!(scc.a)) {
+            scc.n = scc.m = n_a+ R_INF.total_reads0; CALLOC(scc.a, scc.n); CALLOC(scc.f, scc.n);
+        }
 
-    if(!(scb.a)) {
-        scb.n = scb.m = n_a+ R_INF.total_reads0; CALLOC(scb.a, scb.n);
-    }
+        if(!(scb.a)) {
+            scb.n = scb.m = n_a+ R_INF.total_reads0; CALLOC(scb.a, scb.n);
+        }
 
-    if(scc.a && scc.n < n_a + R_INF.total_reads0) {
-        scc.n = scc.m = n_a + R_INF.total_reads0; REALLOC(scc.a, scc.n); REALLOC(scc.f, scc.n);
-    }
-    if(scb.a && scb.n < n_a + R_INF.total_reads0) {
-        scb.n = scb.m = n_a + R_INF.total_reads0; REALLOC(scb.a, scb.n);
+        if(scc.a && scc.n < n_a + R_INF.total_reads0) {
+            scc.n = scc.m = n_a + R_INF.total_reads0; REALLOC(scc.a, scc.n); REALLOC(scc.f, scc.n);
+        }
+        if(scb.a && scb.n < n_a + R_INF.total_reads0) {
+            scb.n = scb.m = n_a + R_INF.total_reads0; REALLOC(scb.a, scb.n);
+        }
     }
 
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
 
-    kt_for_mod(n_thre, worker_hap_ec, b, n_a);///debug_for_fix
+    if(b->prev_state_ec){
+        kt_for_dirty(n_thre, worker_hap_ec, b, n_a);
+    }else if (asm_opt.continue_from_prev_state){
+        kt_for_mod(n_thre, worker_hap_ec, b, n_a);///debug_for_fix
+    }else{
+        kt_for(n_thre, worker_hap_ec, b, n_a);///debug_for_fix
+    }
 
     for (k = 0; k < n_thre; ++k) {
         num_base += b->a[k].cnt[0];
@@ -6298,7 +6324,14 @@ void cal_update_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
 
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
 
-    kt_for_mod(n_thre, worker_update_dc_ec, b, n_a);///debug_for_fix
+
+    if(b->prev_state_ec){
+        kt_for_dirty(n_thre, worker_update_dc_ec, b, n_a);
+    }else if (asm_opt.continue_from_prev_state){
+        kt_for_mod(n_thre, worker_update_dc_ec, b, n_a);///debug_for_fix
+    }else{
+        kt_for(n_thre, worker_update_dc_ec, b, n_a);///debug_for_fix
+    }
 
     for (k = 0; k < n_thre; ++k) {
         num_ec_o += b->a[k].cnt[0]; num_nec_o += b->a[k].cnt[1];
@@ -6394,8 +6427,14 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
     rb = urb = 0;
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
 
-    kt_for_mod(n_thre, worker_hap_dc_ec, b, n_a);///debug_for_fix
-    
+    if(b->prev_state_ec){
+        kt_for_dirty(n_thre, worker_hap_dc_ec, b, n_a);
+    }else if (asm_opt.continue_from_prev_state){
+        kt_for_mod(n_thre, worker_hap_dc_ec, b, n_a);///debug_for_fix
+    }else{
+        kt_for(n_thre, worker_hap_dc_ec, b, n_a);///debug_for_fix
+    }
+
     for (k = 0; k < n_thre; ++k) {
         rb += b->a[k].cnt[0]; urb += b->a[k].cnt[1];
     }
@@ -6472,17 +6511,36 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
 
     // fprintf(stderr, "[M::%s]\tn_thre::%lu, round::%lu, n_round::%lu, n_a::%lu, is_sv::%lu\n", __func__, n_thre, round, n_round, n_a, is_sv);
 
-    ec_ovec_buf_t *b = NULL; uint64_t k, is_cr = (round&1);
+
+    uint8_t prev_state_ec=0;
+    ec_ovec_buf_t *b = NULL;
+    uint64_t k, is_cr = (round&1);
+    if (*tot_b!=0){//KJ: total bases will not be zero for the second call of cal_ec_r
+        prev_state_ec=1;
+    }
     (*tot_b) = (*tot_e) = 0;
 
 
     b = gen_ec_ovec_buf_t(n_thre);
+    b->prev_state_ec=prev_state_ec;
     (*tot_e) += cal_ec_multiple(b, n_thre, n_a, tot_b); ///exit(1);
-    sl_ec_r(n_thre, n_a);
+
+    if(b->prev_state_ec){
+        sl_ec_r_dirty(n_thre, n_a);
+    }else if (asm_opt.continue_from_prev_state){
+        sl_ec_r_mod(n_thre, n_a);
+    }else{
+        sl_ec_r(n_thre, n_a);
+    }
+
 
     for (k = 0; k < n_round; k++) {
         (*tot_e) += cal_sec_ec_multiple(b, n_thre, n_a, k);
-        sl_ec_r(n_thre, n_a);
+        if(b->prev_state_ec){
+            sl_ec_r_dirty(n_thre, n_a);
+        }else{
+            sl_ec_r(n_thre, n_a);
+        }
     }
 
     cal_update_ec_multiple(b, n_thre, n_a);///update overlaps
@@ -6491,7 +6549,13 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
     
 
     if((!is_sv) || (is_sv && is_cr)) {
-        kt_for_mod(n_thre, worker_hap_post_rev, b, n_a);
+        if(b->prev_state_ec){
+            kt_for_dirty(n_thre, worker_hap_post_rev, b, n_a);
+        }else if (asm_opt.continue_from_prev_state){
+            kt_for_mod(n_thre, worker_hap_post_rev, b, n_a);///debug_for_fix
+        }else{
+            kt_for(n_thre, worker_hap_post_rev, b, n_a);///debug_for_fix
+        }
     }
 
     // cal_sec_ec_multiple(b, n_thre, n_a, -1);
@@ -6600,7 +6664,23 @@ void cal_ov_r(uint64_t n_thre, uint64_t n_a, uint64_t new_idx)
     destroy_ec_ovec_buf_t(b);
 }
 
-void sl_ec_r(uint64_t n_thre, uint64_t n_a)
+void sl_ec_r_dirty(uint64_t n_thre, uint64_t n_a)
+{
+    sl_v *b = NULL; uint64_t k; MALLOC(b, n_thre);
+    for (k = 0; k < n_thre; k++) {
+        b[k].a = NULL; b[k].n = b[k].m = 0;
+        init_UC_Read(&b[k].z); kv_init(b[k].q);
+    }
+
+    kt_for_dirty(n_thre, worker_sl_ec, b, n_a);
+
+    for (k = 0; k < n_thre; k++) {
+        free(b[k].a); destory_UC_Read(&b[k].z); kv_destroy(b[k].q);
+    }
+    free(b);
+}
+
+void sl_ec_r_mod(uint64_t n_thre, uint64_t n_a)
 {
     sl_v *b = NULL; uint64_t k; MALLOC(b, n_thre);
     for (k = 0; k < n_thre; k++) {
@@ -6609,6 +6689,22 @@ void sl_ec_r(uint64_t n_thre, uint64_t n_a)
     }
 
     kt_for_mod(n_thre, worker_sl_ec, b, n_a);///debug_for_fix
+
+    for (k = 0; k < n_thre; k++) {
+        free(b[k].a); destory_UC_Read(&b[k].z); kv_destroy(b[k].q);
+    }
+    free(b);
+}
+
+void sl_ec_r(uint64_t n_thre, uint64_t n_a)
+{
+    sl_v *b = NULL; uint64_t k; MALLOC(b, n_thre);
+    for (k = 0; k < n_thre; k++) {
+        b[k].a = NULL; b[k].n = b[k].m = 0;
+        init_UC_Read(&b[k].z); kv_init(b[k].q);
+    }
+
+    kt_for(n_thre, worker_sl_ec, b, n_a);///debug_for_fix
 
     for (k = 0; k < n_thre; k++) {
         free(b[k].a); destory_UC_Read(&b[k].z); kv_destroy(b[k].q);

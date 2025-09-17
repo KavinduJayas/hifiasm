@@ -122,6 +122,7 @@ typedef struct
 	uint64_t* read_length;
 	uint64_t* read_size;
 	uint8_t* trio_flag;
+	uint8_t* dirty_reads;
     uint8_t** rsc;
 
 	///seq start pos in uint8_t* read
