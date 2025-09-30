@@ -12,8 +12,8 @@ EXE=		hifiasm
 LIBS=		-lz -lpthread -lm
 
 ifneq ($(asan),)
-	CXXFLAGS+=-fsanitize=address
-	LIBS+=-fsanitize=address
+	CXXFLAGS+=-fsanitize=address,undefined,signed-integer-overflow,bounds
+	LIBS+=-fsanitize=address,undefined,signed-integer-overflow,bounds
 endif
 
 .SUFFIXES:.cpp .c .o

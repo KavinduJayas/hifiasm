@@ -565,15 +565,15 @@ inline uint64_t flt_quals(char *sc_a, uint64_t sc_l, uint64_t sc_off, int64_t sc
  * Buffer for counting all k-mers *
  **********************************/
 KSEQ_INIT(gzFile, gzread)
-#define HAF_COUNT_EXACT  0x1
-#define HAF_COUNT_ALL    0x2
-#define HAF_RS_WRITE_LEN 0x4
-#define HAF_RS_WRITE_SEQ 0x8
-#define HAF_RS_READ      0x10
-#define HAF_CREATE_NEW   0x20
-#define HAF_SKIP_READ    0x40
-#define HAF_UG_READ      0x80
-#define HAF_COUNT_REFINE 0x100
+#define HAF_COUNT_EXACT  0x1 //0000 0001
+#define HAF_COUNT_ALL    0x2 //0000 0010
+#define HAF_RS_WRITE_LEN 0x4 //0000 0100
+#define HAF_RS_WRITE_SEQ 0x8 //0000 1000
+#define HAF_RS_READ      0x10 //0001 0000
+#define HAF_CREATE_NEW   0x20 //0010 0000
+#define HAF_SKIP_READ    0x40 //0100 0000
+#define HAF_UG_READ      0x80 //1000 0000
+#define HAF_COUNT_REFINE 0x100 //0001 0000 0000
 
 typedef struct { // global data structure for kt_pipeline()
 	const yak_copt_t *opt;
@@ -1293,7 +1293,7 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 	if(!(asm_opt->flag & HA_F_FAST))
 	{
 		fprintf(stderr, "[M::%s::] counting in normal mode\n", __func__);
-		pt = ha_pt_gen(ct, asm_opt->thread_num, 0);
+		pt = ha_pt_gen(ct, asm_opt->thread_num, 0);//KJ: second call with ct 
 		ha_count(asm_opt, HAF_COUNT_EXACT|extra_flag2,  !(asm_opt->flag&HA_F_NO_HPC), asm_opt->k_mer_length, asm_opt->mz_win, pt, flt_tab, rs, NULL, 1, NULL, 0);
 		assert((uint64_t)tot_cnt == pt->tot_pos);
 	}

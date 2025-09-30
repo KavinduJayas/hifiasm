@@ -3434,11 +3434,7 @@ static void worker_hap_ec(void *data, long i, int tid)
     uint32_t high_occ = asm_opt.hom_cov * (2.0 - HA_KMER_GOOD_RATIO);
     uint32_t low_occ = asm_opt.hom_cov * HA_KMER_GOOD_RATIO;
     overlap_region *aux_o = NULL; asg64_v buf0; uint32_t qlen = 0;
-
-    if(i==2196){
-        i++;
-        i--;
-    }
+    
     /**
     if((i != 1129685) && (i != 1137865) && (i != 1137917) && (i != 1140647) && (i != 1144740) && (i != 1148936) && (i != 1149134) && (i != 1151224) && (i != 1151386) && (i != 1152960) && (i != 1154846) && (i != 1154881) && (i != 1155112) && 
         (i != 1156823) && (i != 1157099) && (i != 1157393) && (i != 1158300) && (i != 1158368) && (i != 1160411) && (i != 1160659) && (i != 1161458) && (i != 1163595) && (i != 1164084) && (i != 1164230) && (i != 1165050) && (i != 1168249) && 
@@ -6289,6 +6285,21 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
         }
         if(scb.a && scb.n < n_a + R_INF.total_reads0) {
             scb.n = scb.m = n_a + R_INF.total_reads0; REALLOC(scb.a, scb.n);
+        }
+    }else /*if(asm_opt.continue_from_prev_state)*/{
+        for (k = 0; k < R_INF.total_reads0; ++k) {
+            if (R_INF.dirty_reads[k]) {
+                if (scc.a[k].a) {
+                    free(scc.a[k].a);
+                    scc.a[k].a = NULL;
+                    scc.a[k].n = scc.a[k].m = 0;
+                }
+                if (scb.a[k].a) {
+                    free(scb.a[k].a);
+                    scb.a[k].a = NULL;
+                    scb.a[k].n = scb.a[k].m = 0;
+                }
+            }
         }
     }
 
