@@ -1013,7 +1013,6 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     het_cnt = NULL;
     if(round == asm_opt.number_of_round-1 && asm_opt.is_dbg_het_cnt) CALLOC(het_cnt, R_INF.total_reads);
 
-    if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
 
     // Output_corrected_fastq();
     cal_ec_r(asm_opt.thread_num, round, num_pround, R_INF.total_reads-R_INF.total_reads0, (round == (asm_opt.number_of_round-1))?1:0, tot_b, tot_e);
@@ -1021,9 +1020,20 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 
     // exit(0);
     if(asm_opt.continue_from_prev_state){//KJ: correct the old reads from new batch
+        if(round == 0 ){
+            for (uint64_t idx = 0; idx < R_INF.total_reads0; idx++) {
+                if (R_INF.dirty_reads[idx]) {
+                    destory_ma_hit_t_alloc(&R_INF.paf[idx]);
+                    destory_ma_hit_t_alloc(&R_INF.reverse_paf[idx]);
+                    init_ma_hit_t_alloc(&R_INF.paf[idx]);
+                    init_ma_hit_t_alloc(&R_INF.reverse_paf[idx]);
+                }
+            }
+        }
+        ha_pt_destroy(ha_idx); ha_idx = NULL;
         ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, 1 /*KJ:read from store set to 1 at each prev_state correction step*/, 0, &R_INF, &hom_cov, &het_cov); // build the index
         asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
-        
+        /*
           //KJ: write dirty array for inspection
         char* dirty_name = (char*)malloc(strlen(asm_opt.output_file_name)+35);
         sprintf(dirty_name, "%s.dirty_reads.log", asm_opt.output_file_name);
@@ -1038,10 +1048,11 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
         // fprintf(dirty_fp, "%lu\t%.*s\n", 18834, (int)Get_NAME_LENGTH(R_INF, 18834), Get_NAME(R_INF, 18834));
         fclose(dirty_fp);
         // exit(0);
-
+        */
         cal_ec_r(asm_opt.thread_num, round, num_pround, R_INF.total_reads0, (round == (asm_opt.number_of_round-1))?1:0, tot_b, tot_e);
     }
 
+    if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
     // exit(1);    
 
     memset(R_INF.dirty_reads, 0, R_INF.total_reads0 * sizeof(uint8_t)); //KJ:reset for next round
@@ -2083,7 +2094,7 @@ int ha_assemble(void)
     // quick_debug_phasing(MC_NAME);
 	extern void ha_extract_print_list(const All_reads *rs, int n_rounds, const char *o);
 	int r, hom_cov = -1, ovlp_loaded = 0; uint64_t tot_b, tot_e;
-	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name) && (load_cc_v_all(asm_opt.output_file_name)||!asm_opt.continue_from_prev_state)) {
+	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name) && (!asm_opt.continue_from_prev_state||load_cc_v_all(asm_opt.output_file_name))) {
 		if (asm_opt.continue_from_prev_state == 0) {
             ovlp_loaded = 1;
         }

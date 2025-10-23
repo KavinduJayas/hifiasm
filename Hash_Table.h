@@ -180,7 +180,7 @@ static inline long long y_start_offset(long long x_start, Fake_Cigar* o)
 
     if(i == 0 || i == (long long)o->length)
     {
-        fprintf(stderr, "ERROR at %s:%d\n", __FILE__, __LINE__);//KJ: fails here
+        fprintf(stderr, "ERROR at %s:%d\n", __FILE__, __LINE__);
         exit(0);
     }
 

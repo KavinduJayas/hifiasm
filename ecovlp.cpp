@@ -2998,7 +2998,7 @@ void mark_hc_ovlp_dirty(overlap_region_alloc* ol, All_reads *rref){
     uint32_t prev_read_hit; 
     for(uint64_t i=0; i < ol->length;i++){
        prev_read_hit = ol->list[i].y_id;
-       if(prev_read_hit < rref->total_reads0){
+       if(ol->list[i].is_match && ol->list[i].strong && ol->list[i].without_large_indel && prev_read_hit < rref->total_reads0){
         rref->dirty_reads[prev_read_hit]=1;
        }
     }
@@ -6280,7 +6280,7 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
             scb.n = scb.m = n_a+ R_INF.total_reads0; CALLOC(scb.a, scb.n);
         }
 
-        if(scc.a && scc.n < n_a + R_INF.total_reads0) {
+         if(scc.a && scc.n < n_a + R_INF.total_reads0) {
             scc.n = scc.m = n_a + R_INF.total_reads0; REALLOC(scc.a, scc.n); REALLOC(scc.f, scc.n);
         }
         if(scb.a && scb.n < n_a + R_INF.total_reads0) {
@@ -6451,11 +6451,23 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
     }
 
     if(round >= 0) {
-        if(!(sca.a)) {
-            sca.n = sca.m = n_a; CALLOC(sca.a, n_a);
-        ////correct
-        }else if(sca.n < n_a + R_INF.total_reads0) {
-            sca.n = sca.m = n_a + R_INF.total_reads0; REALLOC(sca.a, sca.n);//KJ: I don't expect sca.a to not be NULL
+        if(!(b->prev_state_ec)){
+            if(!(sca.a)) {
+                sca.n = sca.m = n_a; CALLOC(sca.a, n_a);
+            ////correct
+            }else if(sca.n < n_a + R_INF.total_reads0) {
+                sca.n = sca.m = n_a + R_INF.total_reads0; REALLOC(sca.a, sca.n);//KJ: I don't expect sca.a to not be NULL
+            }
+        }else{
+            for (k = 0; k < R_INF.total_reads0; ++k) {
+                if (R_INF.dirty_reads[k]) {
+                    if (sca.a[k].a) {
+                        free(sca.a[k].a);
+                        sca.a[k].a = NULL;
+                        sca.a[k].n = sca.a[k].m = 0;
+                    }
+                }
+            }
         }
 
         for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
@@ -6576,6 +6588,9 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
     destroy_ec_ovec_buf_t(b);
 
     // write_ec_reads("ec16.fa");
+    
+    //KJ: TODO: assert if tot_b is not zero
+    // assert((*tot_b) != 0);
 
     // uint64_t z;
     // for (z = 0; z < scc.n; z++) {
