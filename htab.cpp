@@ -760,11 +760,18 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 		} else {\
 			while ((ret = kseq_read(p->ks)) >= 0) {\
 				int l = (int)(p->ks->seq.l) - (int)(p->opt->adaLen) - (int)(p->opt->adaLen);\
+				UC_Read ucr;\
+				init_UC_Read(&ucr);\
 				if((l <= 0) || (l < asm_opt.rl_cut)) continue;\
 				if((asm_opt.is_sc) && (asm_opt.sc_cut > 0) && (!flt_quals(p->ks->qual.s+p->opt->adaLen, l, 33, asm_opt.sc_cut))) continue;\
 				if (p->n_seq >= 1<<28) {\
 					fprintf(stderr, "ERROR: this implementation supports no more than %d reads\n", 1<<28);\
 					exit(1);\
+				} if ((p->rs_out && p->n_seq < p->rs_out->total_reads0) && (!(p->flag & HAF_RS_WRITE_LEN) && (p->flag & HAF_RS_WRITE_SEQ))) {\
+					assert(l == (int)p->rs_out->read_length[p->n_seq]);\
+					assert(p->rs_out->read_sperate[p->n_seq] != NULL);\
+					recover_UC_Read(&ucr, p->rs_out, p->n_seq);\
+					assert(memcmp(ucr.seq, p->ks->seq.s+p->opt->adaLen, l) == 0);\
 				}\
 				if (p->rs_out && p->n_seq >= p->rs_out->total_reads0) {\
 					/**for 0-th count, just insert read length to R_INF, instead of read**/\
@@ -1038,9 +1045,9 @@ ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, h
 	}**/
 	///asm_opt->num_reads is the number of fastq files
 	for (i = 0; i < (us?1:asm_o->num_reads); ++i){
-		if(asm_opt.continue_from_prev_state && i==0) asm_opt.rl_cut=0;
+		if(asm_opt.continue_from_prev_state && i==0 && ((flag & HAF_RS_WRITE_LEN) || (flag & HAF_RS_WRITE_SEQ))) asm_opt.rl_cut=0;
 		else if(asm_opt.continue_from_prev_state && i!=0) asm_opt.rl_cut=rl_cut;
-		h = yak_count(&opt, asm_o->read_file_names[i], flag|HAF_CREATE_NEW, p0, h, flt_tab, rs, us, &n_seq);
+		h = yak_count(&opt, asm_o->read_file_names[i], flag|HAF_CREATE_NEW, p0, h, flt_tab, rs, us, &n_seq);//KJ: after reading from fq files, pt update doesn't happen for num_reads (n_seq is not < total_reads)
 		if(h) n_bs += h->bs;
 	}
 	if(h) h->bs = n_bs;	
