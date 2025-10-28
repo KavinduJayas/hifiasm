@@ -6249,13 +6249,24 @@ static void worker_sl_ec(void *data, long i, int tid)
         ci = 0; xk = yk = 0; Nn = 0;
         while (ci < scc.a[i].n) {
             wx[0] = xk; wy[0] = yk;
+            /*
+            KJ: c values are CIGAR op codes
+            0: Match
+            1: Substitution
+            2: Insertion
+            3: Deletion 
+
+            c==2 only advances x (read)
+            c==3 only advances y (template)
+
+            */
             ci = pop_trace_bp_f(&scc.a[i], ci, &c, &bq, &bt, &len);
             if(c != 2) xk += len;
             if(c != 3) yk += len;
             wx[1] = xk; wy[1] = yk;
-            if(c == 0 || c == 1) {
+            if(c == 0 || c == 1) { //KJ: for match and substitution, qval is copied from original
                 memcpy(na + wy[0], oa + wx[0], (wx[1]-wx[0])*sizeof((*oa)));
-            } else if(c == 2) {
+            } else if(c == 2) { //KJ: for insertions, windowed quality is calculated
                 get_wqual(i, wx[0], 0, NULL, oa, sc_wn, &tqual, &wqual);
                 for (k = wy[0]; k < wy[1]; k++) na[k] = wqual;
             }
@@ -6280,13 +6291,31 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
             scb.n = scb.m = n_a+ R_INF.total_reads0; CALLOC(scb.a, scb.n);
         }
 
-         if(scc.a && scc.n < n_a + R_INF.total_reads0) {
-            scc.n = scc.m = n_a + R_INF.total_reads0; REALLOC(scc.a, scc.n); REALLOC(scc.f, scc.n);
+        //KJ: TODO: this memsets may not be necessary, they are overwritten at each round
+        if(scc.a && scc.n < n_a + R_INF.total_reads0) {
+            size_t old_m = scc.m;
+            size_t new_m = n_a + R_INF.total_reads0;
+            scc.n = scc.m = new_m;
+            REALLOC(scc.a, scc.m);
+            memset(scc.a + old_m, 0, (new_m - old_m) * sizeof(*(scc.a)));
+
+            if(scc.f) {
+                REALLOC(scc.f, scc.m);
+                memset(scc.f + old_m, 0, (new_m - old_m) * sizeof(*(scc.f)));
+            } else {
+                CALLOC(scc.f, scc.m);
+            }
         }
+
         if(scb.a && scb.n < n_a + R_INF.total_reads0) {
-            scb.n = scb.m = n_a + R_INF.total_reads0; REALLOC(scb.a, scb.n);
-        }
-    }else /*if(asm_opt.continue_from_prev_state)*/{
+            size_t old_m = scb.m;
+            size_t new_m = n_a + R_INF.total_reads0;
+            scb.n = scb.m = new_m;
+            REALLOC(scb.a, scb.m);
+            memset(scb.a + old_m, 0, (new_m - old_m) * sizeof(*(scb.a)));
+       }
+
+    }else /*if(R_INF.round == 0)*//*if(asm_opt.continue_from_prev_state)*/{//KJ: TODO: no need to clear old values, they are updated each round
         for (k = 0; k < R_INF.total_reads0; ++k) {
             if (R_INF.dirty_reads[k]) {
                 if (scc.a[k].a) {
@@ -6294,10 +6323,16 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
                     scc.a[k].a = NULL;
                     scc.a[k].n = scc.a[k].m = 0;
                 }
+                if (scc.f) {
+                    scc.f[k] = 0;
+                }
                 if (scb.a[k].a) {
                     free(scb.a[k].a);
                     scb.a[k].a = NULL;
                     scb.a[k].n = scb.a[k].m = 0;
+                }
+                if (scb.f) {
+                    scb.f[k] = 0;
                 }
             }
         }

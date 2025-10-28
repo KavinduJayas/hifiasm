@@ -1020,7 +1020,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 
     // exit(0);
     if(asm_opt.continue_from_prev_state){//KJ: correct the old reads from new batch
-        if(round == 0 ){
+        if(round == 0 ){ // KJ: TODO: no need to reset , overweritten
             for (uint64_t idx = 0; idx < R_INF.total_reads0; idx++) {
                 if (R_INF.dirty_reads[idx]) {
                     destory_ma_hit_t_alloc(&R_INF.paf[idx]);
