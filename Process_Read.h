@@ -122,8 +122,16 @@ typedef struct
 	uint64_t* read_length;
 	uint64_t* read_size;
 	uint8_t* trio_flag;
+    /*
+    KJ: 
+    in each dirty_reads element: 
+        top 2 bits stores the latest round the read was corrected in
+        rest of the bits store whether the read was corrected in i-th round
+        [10]00 0101 --> latest corrected in round 2, was dirty in rounds 0 and 2 
+    */
 	uint8_t* dirty_reads;
     uint8_t** rsc;
+    uint8_t round;//KJ: TODO: only works up to 8 rounds
 
 	///seq start pos in uint8_t* read
 	///do not need it

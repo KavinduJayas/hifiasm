@@ -2842,6 +2842,10 @@ void push_ff_ovlp(ma_hit_t_alloc* paf, overlap_region_alloc* ov, uint32_t flag, 
 
     for (k = paf->length = 0; k < ov->length; k++) {
         if(ov->list[k].is_match == flag) {
+            //KJ: ignore edges from non-dirty reads to dirty reads
+            if(ov->list[k].x_id<R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 && (R_INF->dirty_reads[ov->list[k].x_id]>>6)<(R_INF->dirty_reads[ov->list[k].y_id]>>6)) continue;
+            //KJ: ignore edges from new to dirty in the last round
+            if(ov->list[k].x_id>R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 && (R_INF->dirty_reads[ov->list[k].y_id]>>6)==2) continue;
             z = &(paf->buffer[paf->length++]);
 
             z->qns = ov->list[k].x_id;
@@ -2864,6 +2868,8 @@ void push_ff_ovlp(ma_hit_t_alloc* paf, overlap_region_alloc* ov, uint32_t flag, 
             if(z->rev) {
                 z->ts = z->bl - ov->list[k].y_pos_e - 1;
                 z->te = z->bl - ov->list[k].y_pos_s;
+                assert((int)z->ts >= 0);
+                assert((int)z->te <= z->bl);
             }
 
             if(flag == 1) {
@@ -2998,10 +3004,41 @@ void mark_hc_ovlp_dirty(overlap_region_alloc* ol, All_reads *rref){
     uint32_t prev_read_hit; 
     for(uint64_t i=0; i < ol->length;i++){
        prev_read_hit = ol->list[i].y_id;
-       if(ol->list[i].is_match && ol->list[i].strong && ol->list[i].without_large_indel && prev_read_hit < rref->total_reads0){
-        rref->dirty_reads[prev_read_hit]=1;
+       if((ol->list[i].is_match == 1 || ol->list[i].is_match == 2 /*&& ol->list[i].strong && ol->list[i].without_large_indel */)&& prev_read_hit < rref->total_reads0){
+        rref->dirty_reads[prev_read_hit] |= 1<<rref->round;
+        rref->dirty_reads[prev_read_hit] &= 0x3F;//KJ: clear the round bits
+        rref->dirty_reads[prev_read_hit] |= (rref->round<<6);
        }
     }
+}
+
+void fix_prev_state_ovlps(All_reads* rref, overlap_region_alloc* ol, uint32_t curr_rid){
+    assert(curr_rid < rref->total_reads0);
+    uint32_t y_id;
+    long prev_ovlp_index;
+    ma_hit_t_alloc* paf;
+    for(uint64_t i=0; i < ol->length;i++){
+        y_id = ol->list[i].y_id;
+
+        if(y_id >= rref->total_reads0 || rref->dirty_reads[y_id]>>rref->round & 1) continue;
+
+        if(ol->list[i].is_match == 1){//KJ: forward match
+            paf = &rref->paf[y_id];
+        }else if (ol->list[i].is_match == 2){//KJ: reverse match
+            paf = &rref->reverse_paf[y_id];
+        }else{
+            continue;
+        }
+        
+        prev_ovlp_index = get_specific_overlap(paf,y_id,curr_rid);  
+        //KJ: remove the ovlp from the previous buffer if exists
+        if(prev_ovlp_index >= 0 && (size_t)prev_ovlp_index < paf->length) {
+            size_t last = paf->length - 1;
+            paf->buffer[prev_ovlp_index] = paf->buffer[last];
+            paf->length--;
+            //KJ: no need to clear the last item since the length is adjusted
+        }
+    }  
 }
 
 void gen_hc_r_alin_ea(overlap_region_alloc* ol, Candidates_list *cl, All_reads *rref, UC_Read* qu, UC_Read* tu, bit_extz_t *exz, overlap_region *aux_o, double e_rate, int64_t wl, int64_t rid, int64_t khit, int64_t move_gap, asg16_v *buf, asg64_v *srt, ma_hit_t_alloc *in, uint8_t chem_drop, double align_gap_rate, int64_t align_gap_max)
@@ -3013,7 +3050,7 @@ void gen_hc_r_alin_ea(overlap_region_alloc* ol, Candidates_list *cl, All_reads *
     uint64_t k, i, m, *ei, en, *oi, on, tid, trev, nec; overlap_region *z; ma_hit_t *p;
     srt->n = 0;
     for (k = 0; k < in->length; k++) {
-        if(in->buffer[k].el) {
+        if(in->buffer[k].el) {//KJ: if prev round had an exact overlap
             m = in->buffer[k].tn; m <<= 1; m |= in->buffer[k].rev; 
             m <<= 32; m |= k; kv_push(uint64_t, (*srt), m);
         }
@@ -3506,8 +3543,13 @@ static void worker_hap_ec(void *data, long i, int tid)
     b->cnt[1] += wcns_gen(&b->olist, &R_INF, &b->self_read, &b->ovlp_read, &b->exz, &b->pidx, &b->v64, &buf0, 0, 512, b->self_read.length, 3, 0.500001, aux_o, &b->v32, &b->cns, 256, i);
     copy_asg_arr(b->sp, buf0);
 
-    if (i>R_INF.total_reads0)
+    if (asm_opt.continue_from_prev_state && i<R_INF.total_reads0) {
+        fix_prev_state_ovlps(&R_INF, &b->olist, i);
+    }
+
+    if ( asm_opt.continue_from_prev_state && i>=R_INF.total_reads0){
         mark_hc_ovlp_dirty(&b->olist, &R_INF);
+    }
 
     push_nec_re(aux_o, &(scc.a[i]));
     push_nec_re(aux_o, &(scb.a[i]));
@@ -6291,7 +6333,6 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
             scb.n = scb.m = n_a+ R_INF.total_reads0; CALLOC(scb.a, scb.n);
         }
 
-        //KJ: TODO: this memsets may not be necessary, they are overwritten at each round
         if(scc.a && scc.n < n_a + R_INF.total_reads0) {
             size_t old_m = scc.m;
             size_t new_m = n_a + R_INF.total_reads0;
@@ -6315,7 +6356,7 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
             memset(scb.a + old_m, 0, (new_m - old_m) * sizeof(*(scb.a)));
        }
 
-    }else /*if(R_INF.round == 0)*//*if(asm_opt.continue_from_prev_state)*/{//KJ: TODO: no need to clear old values, they are updated each round
+    }else /*if(R_INF.round == 0)*//*if(asm_opt.continue_from_prev_state)*/{//KJ: no need to clear old values, they are updated each round
         for (k = 0; k < R_INF.total_reads0; ++k) {
             if (R_INF.dirty_reads[k]) {
                 if (scc.a[k].a) {
