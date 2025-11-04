@@ -1020,14 +1020,13 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 
     // exit(0);
     if(asm_opt.continue_from_prev_state){//KJ: correct the old reads from new batch
-        if(round == 0 ){ // KJ: TODO: no need to reset , overweritten
-            for (uint64_t idx = 0; idx < R_INF.total_reads0; idx++) {
-                if (R_INF.dirty_reads[idx]) {
-                    destory_ma_hit_t_alloc(&R_INF.paf[idx]);
-                    destory_ma_hit_t_alloc(&R_INF.reverse_paf[idx]);
-                    init_ma_hit_t_alloc(&R_INF.paf[idx]);
-                    init_ma_hit_t_alloc(&R_INF.reverse_paf[idx]);
-                }
+        for (uint64_t idx = 0; idx < R_INF.total_reads0; idx++) {
+            //KJ: TODO: max num rounds is 6
+            if (!(R_INF.dirty_reads[idx]&(0xFF>>(8-round))) && (R_INF.dirty_reads[idx]>>round&1)) {//KJ: if a read is dirty for the first time
+                destory_ma_hit_t_alloc(&R_INF.paf[idx]);
+                destory_ma_hit_t_alloc(&R_INF.reverse_paf[idx]);
+                init_ma_hit_t_alloc(&R_INF.paf[idx]);
+                init_ma_hit_t_alloc(&R_INF.reverse_paf[idx]);
             }
         }
         ha_pt_destroy(ha_idx); ha_idx = NULL;
@@ -1055,7 +1054,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
     // exit(1);    
 
-    memset(R_INF.dirty_reads, 0, R_INF.total_reads0 * sizeof(uint8_t)); //KJ:reset for next round
+    // memset(R_INF.dirty_reads, 0, R_INF.total_reads0 * sizeof(uint8_t)); //KJ:reset for next round
     // if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
     if(des_idx) {
         ha_pt_destroy(ha_idx); ha_idx = NULL;
@@ -2127,6 +2126,7 @@ int ha_assemble(void)
 			ha_opt_reset_to_round(&asm_opt, r); // this update asm_opt.roundID and a few other fields
             tot_b = tot_e = 0;
 			// ha_overlap_and_correct(r);
+            R_INF.round=r;
             ha_ec(r, asm_opt.number_of_pround, (r<asm_opt.number_of_round-1)?1:0 /*KJ:destroy index if last round*/, &tot_b, &tot_e);
 			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> corrected reads for round %d\n", __func__, yak_realtime(),
 					yak_cpu_usage(), yak_peakrss_in_gb(), r + 1);
