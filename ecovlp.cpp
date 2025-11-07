@@ -63,7 +63,6 @@ typedef struct {
 	ec_ovec_buf_t0 *a;
 	uint32_t n, rev;
     uint8_t *cr;
-    uint8_t prev_state_ec;
 } ec_ovec_buf_t;
 
 typedef struct {
@@ -232,7 +231,7 @@ void write_cc_v_all(char* output_file_name)
     }
 }
 
-int load_cc_v_all(char* output_file_name)
+int load_cc_v_all(char* output_file_name)//KJ: TODO: cc_v data structures are overwritten at ec, do not need old data
 {
     char* cc_name = (char*)malloc(strlen(output_file_name) + 25);
     FILE* input_file = NULL;
@@ -2844,8 +2843,8 @@ void push_ff_ovlp(ma_hit_t_alloc* paf, overlap_region_alloc* ov, uint32_t flag, 
         if(ov->list[k].is_match == flag) {
             //KJ: ignore edges from non-dirty reads to dirty reads
             if(ov->list[k].x_id<R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 && (R_INF->dirty_reads[ov->list[k].x_id]>>6)<(R_INF->dirty_reads[ov->list[k].y_id]>>6)) continue;
-            //KJ: ignore edges from new to dirty in the last round
-            if(ov->list[k].x_id>R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 && (R_INF->dirty_reads[ov->list[k].y_id]>>6)==2) continue;
+            // //KJ: ignore edges from new to dirty in the last round
+            // if(ov->list[k].x_id>R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 && (R_INF->dirty_reads[ov->list[k].y_id]>>6)==2) continue;
             z = &(paf->buffer[paf->length++]);
 
             z->qns = ov->list[k].x_id;
@@ -3004,10 +3003,10 @@ void mark_hc_ovlp_dirty(overlap_region_alloc* ol, All_reads *rref){
     uint32_t prev_read_hit; 
     for(uint64_t i=0; i < ol->length;i++){
        prev_read_hit = ol->list[i].y_id;
-       if((ol->list[i].is_match == 1 || ol->list[i].is_match == 2 /*&& ol->list[i].strong && ol->list[i].without_large_indel */)&& prev_read_hit < rref->total_reads0){
+       if((ol->list[i].is_match == 1 || ol->list[i].is_match == 2 && ol->list[i].strong && ol->list[i].without_large_indel)&& prev_read_hit < rref->total_reads0){
         rref->dirty_reads[prev_read_hit] |= 1<<rref->round;
         rref->dirty_reads[prev_read_hit] &= 0x3F;//KJ: clear the round bits
-        rref->dirty_reads[prev_read_hit] |= (rref->round<<6);
+        rref->dirty_reads[prev_read_hit] |= ((rref->round+1)<<6);
        }
     }
 }
@@ -6324,67 +6323,34 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
     uint64_t k, num_base = 0, num_correct = 0; (*r_base) = 0;
 
     //KJ: TODO: if continue_from_prev and total_reads0 >0 --> scc scb should not be NULL
-    if(!b->prev_state_ec){
-        if(!(scc.a)) {
-            scc.n = scc.m = n_a+ R_INF.total_reads0; CALLOC(scc.a, scc.n); CALLOC(scc.f, scc.n);
+    if(!(scc.a)) {
+        scc.n = scc.m = n_a; CALLOC(scc.a, scc.n); CALLOC(scc.f, scc.n);
+    }
+
+    if(!(scb.a)) {
+        scb.n = scb.m = n_a; CALLOC(scb.a, scb.n);
+    }
+
+    if(scc.a && scc.n < n_a ) {
+        scc.n = scc.m = n_a; REALLOC(scc.a, scc.m);
+
+        if(scc.f) {
+            REALLOC(scc.f, scc.m);
+        } else {
+            CALLOC(scc.f, scc.m);
         }
+    }
 
-        if(!(scb.a)) {
-            scb.n = scb.m = n_a+ R_INF.total_reads0; CALLOC(scb.a, scb.n);
-        }
-
-        if(scc.a && scc.n < n_a + R_INF.total_reads0) {
-            size_t old_m = scc.m;
-            size_t new_m = n_a + R_INF.total_reads0;
-            scc.n = scc.m = new_m;
-            REALLOC(scc.a, scc.m);
-            memset(scc.a + old_m, 0, (new_m - old_m) * sizeof(*(scc.a)));
-
-            if(scc.f) {
-                REALLOC(scc.f, scc.m);
-                memset(scc.f + old_m, 0, (new_m - old_m) * sizeof(*(scc.f)));
-            } else {
-                CALLOC(scc.f, scc.m);
-            }
-        }
-
-        if(scb.a && scb.n < n_a + R_INF.total_reads0) {
-            size_t old_m = scb.m;
-            size_t new_m = n_a + R_INF.total_reads0;
-            scb.n = scb.m = new_m;
-            REALLOC(scb.a, scb.m);
-            memset(scb.a + old_m, 0, (new_m - old_m) * sizeof(*(scb.a)));
-       }
-
-    }else /*if(R_INF.round == 0)*//*if(asm_opt.continue_from_prev_state)*/{//KJ: no need to clear old values, they are updated each round
-        for (k = 0; k < R_INF.total_reads0; ++k) {
-            if (R_INF.dirty_reads[k]) {
-                if (scc.a[k].a) {
-                    free(scc.a[k].a);
-                    scc.a[k].a = NULL;
-                    scc.a[k].n = scc.a[k].m = 0;
-                }
-                if (scc.f) {
-                    scc.f[k] = 0;
-                }
-                if (scb.a[k].a) {
-                    free(scb.a[k].a);
-                    scb.a[k].a = NULL;
-                    scb.a[k].n = scb.a[k].m = 0;
-                }
-                if (scb.f) {
-                    scb.f[k] = 0;
-                }
-            }
-        }
+    if(scb.a && scb.n < n_a ) {
+        scb.n = scb.m = n_a; REALLOC(scb.a, scb.m);
     }
 
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
 
-    if(b->prev_state_ec){
-        kt_for_dirty(n_thre, worker_hap_ec, b, n_a);
-    }else if (asm_opt.continue_from_prev_state){
-        kt_for_mod(n_thre, worker_hap_ec, b, n_a);///debug_for_fix
+    if(asm_opt.continue_from_prev_state){
+        kt_for_mod(n_thre, worker_hap_ec, b, n_a-R_INF.total_reads0);///debug_for_fix
+        if(R_INF.total_reads0)
+            kt_for_dirty(n_thre, worker_hap_ec, b, R_INF.total_reads0);
     }else{
         kt_for(n_thre, worker_hap_ec, b, n_a);///debug_for_fix
     }
@@ -6411,11 +6377,10 @@ void cal_update_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
 
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
 
-
-    if(b->prev_state_ec){
-        kt_for_dirty(n_thre, worker_update_dc_ec, b, n_a);
-    }else if (asm_opt.continue_from_prev_state){
-        kt_for_mod(n_thre, worker_update_dc_ec, b, n_a);///debug_for_fix
+    if (asm_opt.continue_from_prev_state){
+        kt_for_mod(n_thre, worker_update_dc_ec, b, n_a-R_INF.total_reads0);///debug_for_fix
+        if(R_INF.total_reads0)
+            kt_for_dirty(n_thre, worker_update_dc_ec, b, R_INF.total_reads0);
     }else{
         kt_for(n_thre, worker_update_dc_ec, b, n_a);///debug_for_fix
     }
@@ -6514,10 +6479,10 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
     rb = urb = 0;
     for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
 
-    if(b->prev_state_ec){
-        kt_for_dirty(n_thre, worker_hap_dc_ec, b, n_a);
-    }else if (asm_opt.continue_from_prev_state){
-        kt_for_mod(n_thre, worker_hap_dc_ec, b, n_a);///debug_for_fix
+    if (asm_opt.continue_from_prev_state){
+        kt_for_mod(n_thre, worker_hap_dc_ec, b, n_a-R_INF.total_reads0);///debug_for_fix
+        if(R_INF.total_reads0)
+            kt_for_dirty(n_thre, worker_hap_dc_ec, b, R_INF.total_reads0);
     }else{
         kt_for(n_thre, worker_hap_dc_ec, b, n_a);///debug_for_fix
     }
@@ -6527,27 +6492,16 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
     }
 
     if(round >= 0) {
-        if(!(b->prev_state_ec)){
-            if(!(sca.a)) {
-                sca.n = sca.m = n_a; CALLOC(sca.a, n_a);
-            ////correct
-            }else if(sca.n < n_a + R_INF.total_reads0) {
-                sca.n = sca.m = n_a + R_INF.total_reads0; REALLOC(sca.a, sca.n);//KJ: I don't expect sca.a to not be NULL
-            }
-        }else{
-            for (k = 0; k < R_INF.total_reads0; ++k) {
-                if (R_INF.dirty_reads[k]) {
-                    if (sca.a[k].a) {
-                        free(sca.a[k].a);
-                        sca.a[k].a = NULL;
-                        sca.a[k].n = sca.a[k].m = 0;
-                    }
-                }
-            }
+        if(!(sca.a)) {
+            sca.n = sca.m = n_a; CALLOC(sca.a, n_a);
+        ////correct
+        }else if(sca.n < n_a) {
+            sca.n = sca.m = n_a ; REALLOC(sca.a, sca.n);//KJ: I expect sca.a to be NULL
         }
 
         for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
         
+        //KJ: TODO: make batch wise
         kt_for(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix
 
         for (k = 0; k < n_thre; ++k) {
@@ -6555,6 +6509,7 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
             num_correct += b->a[k].cnt[1];
         }
 
+        //KJ: TODO: make batchwise
         kt_for(n_thre, update_scb0, b, n_a);
     }
 
@@ -6611,23 +6566,18 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
     // fprintf(stderr, "[M::%s]\tn_thre::%lu, round::%lu, n_round::%lu, n_a::%lu, is_sv::%lu\n", __func__, n_thre, round, n_round, n_a, is_sv);
 
 
-    uint8_t prev_state_ec=0;
     ec_ovec_buf_t *b = NULL;
     uint64_t k, is_cr = (round&1);
-    if (*tot_b!=0){//KJ: total bases will not be zero for the second call of cal_ec_r
-        prev_state_ec=1;
-    }
     (*tot_b) = (*tot_e) = 0;
 
 
     b = gen_ec_ovec_buf_t(n_thre);
-    b->prev_state_ec=prev_state_ec;
     (*tot_e) += cal_ec_multiple(b, n_thre, n_a, tot_b); ///exit(1);
 
-    if(b->prev_state_ec){
-        sl_ec_r_dirty(n_thre, n_a);
-    }else if (asm_opt.continue_from_prev_state){
-        sl_ec_r_mod(n_thre, n_a);
+    if (asm_opt.continue_from_prev_state){
+        sl_ec_r_mod(n_thre, n_a-R_INF.total_reads0);
+        if(R_INF.total_reads0)
+            sl_ec_r_dirty(n_thre, R_INF.total_reads0);
     }else{
         sl_ec_r(n_thre, n_a);
     }
@@ -6635,8 +6585,10 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
 
     for (k = 0; k < n_round; k++) {
         (*tot_e) += cal_sec_ec_multiple(b, n_thre, n_a, k);
-        if(b->prev_state_ec){
-            sl_ec_r_dirty(n_thre, n_a);
+        if (asm_opt.continue_from_prev_state){
+            sl_ec_r_mod(n_thre, n_a-R_INF.total_reads0);
+            if(R_INF.total_reads0)
+                sl_ec_r_dirty(n_thre, R_INF.total_reads0);
         }else{
             sl_ec_r(n_thre, n_a);
         }
@@ -6648,10 +6600,10 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
     
 
     if((!is_sv) || (is_sv && is_cr)) {
-        if(b->prev_state_ec){
-            kt_for_dirty(n_thre, worker_hap_post_rev, b, n_a);
-        }else if (asm_opt.continue_from_prev_state){
-            kt_for_mod(n_thre, worker_hap_post_rev, b, n_a);///debug_for_fix
+        if (asm_opt.continue_from_prev_state){
+            kt_for_mod(n_thre, worker_hap_post_rev, b, n_a-R_INF.total_reads0);///debug_for_fix
+            if(R_INF.total_reads0)
+                kt_for_dirty(n_thre, worker_hap_post_rev, b, R_INF.total_reads0);
         }else{
             kt_for(n_thre, worker_hap_post_rev, b, n_a);///debug_for_fix
         }

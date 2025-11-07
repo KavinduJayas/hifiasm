@@ -75,11 +75,11 @@ static void *ktf_worker_dirty(void *data)
 	for (;;) {
 		i = __sync_fetch_and_add(&w->i, w->t->n_threads);
 		if (i >= w->t->n) break;
-		if(R_INF.dirty_reads[i])
+		if(R_INF.dirty_reads[i]&0x3F)//KJ: dirty in any round
 		w->t->func(w->t->data, i, w - w->t->w);
 	}
 	while ((i = steal_work(w->t)) >= 0)
-		if(R_INF.dirty_reads[i]>>R_INF.round & 1)
+		if(R_INF.dirty_reads[i]&0x3F)//KJ: dirty in any round
 		w->t->func(w->t->data, i, w - w->t->w);
 	pthread_exit(0);
 }
@@ -135,7 +135,7 @@ void kt_for_dirty(int n_threads, void (*func)(void*,long,int), void *data, long 
 	} else {
 		long j;
 		for (j = 0; j < n; ++j) {
-			if(R_INF.dirty_reads[j]>>R_INF.round & 1)
+			if(R_INF.dirty_reads[j]&0x3F)//KJ: dirty in any round
 			func(data, j, 0);
 		}
 	}
