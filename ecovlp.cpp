@@ -2842,7 +2842,10 @@ void push_ff_ovlp(ma_hit_t_alloc* paf, overlap_region_alloc* ov, uint32_t flag, 
     for (k = paf->length = 0; k < ov->length; k++) {
         if(ov->list[k].is_match == flag) {
             //KJ: ignore edges from non-dirty reads to dirty reads
-            if(ov->list[k].x_id<R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 && (R_INF->dirty_reads[ov->list[k].x_id]>>6)<(R_INF->dirty_reads[ov->list[k].y_id]>>6)) continue;
+            if(ov->list[k].x_id<R_INF->total_reads0 && 
+                ov->list[k].y_id<R_INF->total_reads0 && 
+                !(R_INF->dirty_reads[ov->list[k].x_id]&0x3F) &&
+                (R_INF->dirty_reads[ov->list[k].y_id]&0x3F)) continue;
             // //KJ: ignore edges from new to dirty in the last round
             // if(ov->list[k].x_id>R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 && (R_INF->dirty_reads[ov->list[k].y_id]>>6)==2) continue;
             z = &(paf->buffer[paf->length++]);
@@ -3542,6 +3545,7 @@ static void worker_hap_ec(void *data, long i, int tid)
     b->cnt[1] += wcns_gen(&b->olist, &R_INF, &b->self_read, &b->ovlp_read, &b->exz, &b->pidx, &b->v64, &buf0, 0, 512, b->self_read.length, 3, 0.500001, aux_o, &b->v32, &b->cns, 256, i);
     copy_asg_arr(b->sp, buf0);
 
+    //KJ: TODO: correct the overlaps comming from non-dirty 
     if (asm_opt.continue_from_prev_state && i<R_INF.total_reads0) {
         fix_prev_state_ovlps(&R_INF, &b->olist, i);
     }
