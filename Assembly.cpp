@@ -1077,7 +1077,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     if (asm_opt.required_read_name) destory_Debug_reads(&R_INF_FLAG), exit(0); // for debugging only
     ///debug_print_pob_regions();
 
-    if (round == asm_opt.number_of_round - 1) write_cc_v_all(asm_opt.output_file_name);
+    // if (round == asm_opt.number_of_round - 1) write_cc_v_all(asm_opt.output_file_name);
     // Output_corrected_reads();
 
     // exit(1);

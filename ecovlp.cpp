@@ -2826,6 +2826,7 @@ void push_ne_ovlp(ma_hit_t_alloc* paf, overlap_region_alloc* ov, uint32_t flag, 
 
 void push_ff_ovlp(ma_hit_t_alloc* paf, overlap_region_alloc* ov, uint32_t flag, All_reads* R_INF, uint64_t *cnt)
 {
+    long long dd;
     // if(qu && tu) {
     //     debug_extract_max_exact_sub(qid, qu, tu);
     // }
@@ -2841,11 +2842,29 @@ void push_ff_ovlp(ma_hit_t_alloc* paf, overlap_region_alloc* ov, uint32_t flag, 
 
     for (k = paf->length = 0; k < ov->length; k++) {
         if(ov->list[k].is_match == flag) {
-            //KJ: ignore edges from non-dirty reads to dirty reads
-            if(ov->list[k].x_id<R_INF->total_reads0 && 
-                ov->list[k].y_id<R_INF->total_reads0 && 
-                !(R_INF->dirty_reads[ov->list[k].x_id]&0x3F) &&
-                (R_INF->dirty_reads[ov->list[k].y_id]&0x3F)) continue;
+            //KJ: correct overlaps in non-dirty reads that involve dirty reads
+            if(ov->list[k].x_id<R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 
+                && !(R_INF->dirty_reads[ov->list[k].x_id]&0x3F) && (R_INF->dirty_reads[ov->list[k].y_id]&0x3F)) {
+                    if(flag==1) //KJ: forward sources
+                        dd = get_specific_overlap(&R_INF->paf[ov->list[k].y_id], ov->list[k].y_id, ov->list[k].x_id);
+                    else if(flag==2) //KJ: reverse sources
+                        dd = get_specific_overlap(&R_INF->reverse_paf[ov->list[k].y_id], ov->list[k].y_id, ov->list[k].x_id);
+                    else 
+                        dd = -1;
+                    
+                    //KJ: if corresponding dirty->non-dirty overlap exists 
+                    if(dd!=-1){
+                        //KJ: copy ovlp from dirty read
+                        z = &(paf->buffer[paf->length++]);
+                        if(flag==1) //KJ: forward sources
+                        //KJ: TODO: some dirty->non-dirty ovlps that should be skipped, may be copied to non-dirty->dirty ovlps 
+                            copy_hit_with_flipped_qn_tn(&R_INF->paf[ov->list[k].y_id].buffer[dd], z);
+                        else if(flag==2) //KJ: reverse sources
+                            copy_hit_with_flipped_qn_tn(&R_INF->reverse_paf[ov->list[k].y_id].buffer[dd], z);
+                    }
+                    continue;
+                }
+                
             // //KJ: ignore edges from new to dirty in the last round
             // if(ov->list[k].x_id>R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 && (R_INF->dirty_reads[ov->list[k].y_id]>>6)==2) continue;
             z = &(paf->buffer[paf->length++]);
@@ -6505,16 +6524,30 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
 
         for (k = 0; k < n_thre; ++k) b->a[k].cnt[0] = b->a[k].cnt[1] = 0;
         
-        //KJ: TODO: make batch wise
-        kt_for(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix
+        // //KJ: TODO: make batch wise
+        // kt_for(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix
+        if (asm_opt.continue_from_prev_state){
+            kt_for_mod(n_thre, worker_hap_dc_ec0, b, n_a-R_INF.total_reads0);///debug_for_fix
+            if(R_INF.total_reads0)
+                kt_for_dirty(n_thre, worker_hap_dc_ec0, b, R_INF.total_reads0);
+        }else{
+            kt_for(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix
+        }
 
         for (k = 0; k < n_thre; ++k) {
             num_base += b->a[k].cnt[0];
             num_correct += b->a[k].cnt[1];
         }
 
-        //KJ: TODO: make batchwise
-        kt_for(n_thre, update_scb0, b, n_a);
+        // //KJ: TODO: make batchwise
+        // kt_for(n_thre, update_scb0, b, n_a);
+        if (asm_opt.continue_from_prev_state){
+            kt_for_mod(n_thre, update_scb0, b, n_a-R_INF.total_reads0);///debug_for_fix
+            if(R_INF.total_reads0)
+                kt_for_dirty(n_thre, update_scb0, b, R_INF.total_reads0);
+        }else{
+            kt_for(n_thre, update_scb0, b, n_a);///debug_for_fix
+        }
     }
 
     if(round >= 0) {
