@@ -13,6 +13,7 @@
 #include "rcut.h"
 #include "kalloc.h"
 #include "ecovlp.h"
+// #include "Overlaps.h"
 
 void ha_get_candidates_interface(ha_abuf_t *ab, int64_t rid, UC_Read *ucr, overlap_region_alloc *overlap_list, overlap_region_alloc *overlap_list_hp, Candidates_list *cl, double bw_thres, 
 int max_n_chain, int keep_whole_chain, kvec_t_u8_warp* k_flag, kvec_t_u64_warp* chain_idx, ma_hit_t_alloc* paf, ma_hit_t_alloc* rev_paf, overlap_region* f_cigar, kvec_t_u64_warp* dbg_ct, st_mt_t *sp);
@@ -2115,11 +2116,11 @@ int ha_assemble(void)
             exit(EXIT_FAILURE);
         }
         ha_flt_tab = ha_idx = NULL;
-        if((asm_opt.flag & HA_F_VERBOSE_GFA)) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
+        if((asm_opt.flag & HA_F_VERBOSE_GFA) /*KJ: TODO: test --> && !asm_opt.continue_from_prev_state*/) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
 
         R_INF.total_reads0 = R_INF.total_reads;
 		// construct hash table for high occurrence k-mers
-		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && (ha_flt_tab == NULL || asm_opt.continue_from_prev_state)) 
+		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && (ha_flt_tab == NULL /*KJ: TODO: test --> || asm_opt.continue_from_prev_state*/)) 
         {
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
@@ -2139,6 +2140,9 @@ int ha_assemble(void)
 			// 		asm_opt.num_bases, asm_opt.num_corrected_bases, asm_opt.num_recorrected_bases);
 			// fprintf(stderr, "[M::%s] size of buffer: %.3fGB\n", __func__, asm_opt.mem_buf / 1073741824.0);
 		}
+        
+        write_all_data_to_disk(R_INF.paf, R_INF.reverse_paf, 
+        &R_INF, "after_ec");
 		if (asm_opt.flag & HA_F_WRITE_EC) {
             if(asm_opt.is_sc) Output_corrected_fastq();
             else Output_corrected_reads();
@@ -2147,11 +2151,15 @@ int ha_assemble(void)
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
 		// ha_overlap_final();
         ha_ec_ff(1/**0**/);
+        
+        write_all_data_to_disk(R_INF.paf, R_INF.reverse_paf, 
+        &R_INF, "ec_ff");
+
         fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n", __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());
 		// fprintf(stderr, "\n[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n", __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());
 		// ha_print_ovlp_stat(R_INF.paf, R_INF.reverse_paf, R_INF.total_reads);
 		ha_ft_destroy(ha_flt_tab);
-		// if (asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
+		if (asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
 		ha_triobin(&asm_opt);
 
         // exit(1);

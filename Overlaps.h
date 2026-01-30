@@ -8,6 +8,7 @@
 #include "kdq.h"
 #include "ksort.h"
 #include "CommandLines.h"
+#include "All_reads.h"
 
 ///#define MIN_OVERLAP_LEN 2000
 ///#define MIN_OVERLAP_LEN 500
@@ -113,25 +114,6 @@ typedef struct {
 }vec_mg_lchain_t;
 
 ///query is the read itself
-typedef struct {
-	uint64_t qns;
-	uint32_t qe, tn, ts, te;
-	// uint32_t ml:31, rev:1;
-	uint32_t cc:30, ml:1, rev:1;
-	uint32_t bl:31, del:1;
-	uint8_t el;
-	uint8_t no_l_indel;
-} ma_hit_t;
-
-typedef struct {
-	ma_hit_t* buffer;
-    uint32_t size;
-    uint32_t length;
-	uint8_t is_fully_corrected;
-	uint8_t is_abnormal;
-} ma_hit_t_alloc;
-
-
 void init_ma_hit_t_alloc(ma_hit_t_alloc* x);
 void clear_ma_hit_t_alloc(ma_hit_t_alloc* x);
 void resize_ma_hit_t_alloc(ma_hit_t_alloc* x, uint32_t size);
@@ -142,6 +124,7 @@ void ma_hit_sort_qns(ma_hit_t *a, long long n);
 
 int load_all_data_from_disk(ma_hit_t_alloc **sources, ma_hit_t_alloc **reverse_sources, char* output_file_name);
 
+void write_all_data_to_disk(ma_hit_t_alloc* sources, ma_hit_t_alloc* reverse_sources, All_reads *RNF, char* output_file_name);
 
 typedef struct {
 	uint32_t s:31, del:1, e;
