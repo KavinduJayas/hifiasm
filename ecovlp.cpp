@@ -4212,6 +4212,35 @@ static void worker_hap_dc_ec_gen(void *data, long i, int tid)
    refresh_ec_ovec_buf_t0(b, REFRESH_N);
 }
 
+void reverse_non_dirty_ovlps(ma_hit_t_alloc* paf){
+    ma_hit_t* ovlp;
+    uint32_t ts_old;
+
+    for(uint64_t i=0; i < paf->length; i++){
+        if(i==23){
+            i++;
+            i--;
+        }
+        ovlp = &paf->buffer[i];
+        if(ovlp->qns>>32 == 59 && ovlp->tn==4){
+            i++;
+            i--;
+        }
+        
+        if(ovlp->qns>>32 == 4 && ovlp->tn==59){
+            i++;
+            i--;
+        }
+        if(ovlp->rev){
+            ts_old = ovlp->ts;
+            ovlp->ts = ovlp->bl - ovlp->te;
+            ovlp->te = ovlp->bl - ts_old;
+            assert((int)ovlp->ts >= 0);
+            assert((int)ovlp->te <= ovlp->bl);
+        }
+    }
+}
+
 static void worker_hap_dc_ec_gen_new_idx(void *data, long i, int tid)
 {
     
@@ -4233,6 +4262,12 @@ static void worker_hap_dc_ec_gen_new_idx(void *data, long i, int tid)
 
     // R_INF.paf[i].is_abnormal = abnormal;
     // R_INF.trio_flag[i] = AMBIGU;
+
+    //KJ: reverse here to cancel out old non-dirty overlaps being reversed when pushing to pafs and when sub_region recovering
+    if(i<R_INF.total_reads0 && !R_INF.dirty_reads[i]){
+        reverse_non_dirty_ovlps(&R_INF.paf[i]);
+        reverse_non_dirty_ovlps(&R_INF.reverse_paf[i]);
+    }
 
     h_ec_lchain_fast_new(b->ab, i, &b->self_read, &b->ovlp_read, &R_INF, &b->olist, &b->clist, &b->exz, &b->v16, &b->v64, &(R_INF.paf[i]), &(R_INF.reverse_paf[i]), 0.866666);
 
@@ -5323,9 +5358,15 @@ void h_ec_lchain_fast_new(ha_abuf_t *ab, uint32_t rid, UC_Read *qu, UC_Read *tu,
     ///overlap idx
     srt_i->n = 0;
     oa = in0->buffer; on = in0->length; m0 = 0;
+    //KJ: encode the hits from paf and rev_paf for sorting
     for (k = 0; k < on; k++) {
         // if(oa[k].el) continue;
         m = oa[k].tn; m <<= 1; m |= ((uint64_t)oa[k].rev); m <<= 32; m |= (k<<1); m |= m0;
+        /* KJ: 
+        m (pushed to srt_i->a[i]):
+        |-------tn-------|--rev-|-------k-------|--m0--|
+        |------31bit-----|-1bit-|-----31bit-----|-1bit-|
+        */
         kv_push(uint64_t, *srt_i, m);
     }
     oa = in1->buffer; on = in1->length; m0 = 1;
@@ -5340,10 +5381,10 @@ void h_ec_lchain_fast_new(ha_abuf_t *ab, uint32_t rid, UC_Read *qu, UC_Read *tu,
     for (k = m = 0; k < ol->length; k++) {
         z = &(ol->list[k]); tid = z->y_id; trev = z->y_pos_strand;
         z->non_homopolymer_errors = 0;
-        for (; (i < srt_i->n) && ((srt_i->a[i]>>32) < ((tid<<1)|trev)); i++);
+        for (; (i < srt_i->n) && ((srt_i->a[i]>>32)/*KJ: a[i]>>32 = |-------tn-------|-rev-|*/ < ((tid<<1)|trev)); i++);
         if((i < srt_i->n) && ((srt_i->a[i]>>32) == ((tid<<1)|trev))) {
             om = 1; z->shared_seed = 0; z->is_match = 0;
-            if(srt_i->a[i]&1) {
+            if(srt_i->a[i]&1) {//KJ: m0 
                 p = &(in1->buffer[((uint32_t)srt_i->a[i])>>1]); is_match = 2;
             } else {
                 p = &(in0->buffer[((uint32_t)srt_i->a[i])>>1]); is_match = 1;
@@ -5433,6 +5474,7 @@ void h_ec_lchain_fast_new(ha_abuf_t *ab, uint32_t rid, UC_Read *qu, UC_Read *tu,
 
     if(is_usrt) overlap_region_sort_y_id(ol->list, ol->length);
 
+    //KJ: for duplicate chains, pick the no-error/ longest ones 
     if(ol->length > 1) {///for duplicated chains
         uint64_t mm_k, s; int64_t mm_sc, sc;
         for (k = 1, l = m = 0; k <= ol->length; k++) {
