@@ -4217,20 +4217,7 @@ void reverse_non_dirty_ovlps(ma_hit_t_alloc* paf){
     uint32_t ts_old;
 
     for(uint64_t i=0; i < paf->length; i++){
-        if(i==23){
-            i++;
-            i--;
-        }
         ovlp = &paf->buffer[i];
-        if(ovlp->qns>>32 == 59 && ovlp->tn==4){
-            i++;
-            i--;
-        }
-        
-        if(ovlp->qns>>32 == 4 && ovlp->tn==59){
-            i++;
-            i--;
-        }
         if(ovlp->rev){
             ts_old = ovlp->ts;
             ovlp->ts = ovlp->bl - ovlp->te;

@@ -717,6 +717,7 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 		s->uq = p->opt->uq;\
 		if (p->rs_in && (p->flag & HAF_RS_READ)) {\
 			while (p->n_seq < p->rs_in->total_reads) {\
+				/*if(p->n_seq < p->rs_in->total_reads0 && !p->rs_in->dirty_reads[p->n_seq++]) continue;*/\
 				if ((p->flag & HAF_SKIP_READ) && p->rs_in->trio_flag[p->n_seq] != AMBIGU) {\
 					++p->n_seq;\
 					continue;\
@@ -759,6 +760,10 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 			}\
 		} else {\
 			while ((ret = kseq_read(p->ks)) >= 0) {\
+				/*if(p->n_seq < p->rs_in->total_reads0){\
+					p->n_seq = p->rs_in->total_reads0;\
+					break;\
+				}*/\
 				int l = (int)(p->ks->seq.l) - (int)(p->opt->adaLen) - (int)(p->opt->adaLen);\
 				UC_Read ucr;\
 				init_UC_Read(&ucr);\
@@ -769,6 +774,7 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 					exit(1);\
 				} if ((p->rs_out && p->n_seq < p->rs_out->total_reads0) && (!(p->flag & HAF_RS_WRITE_LEN) && (p->flag & HAF_RS_WRITE_SEQ))) {\
 					assert(l == (int)p->rs_out->read_length[p->n_seq]);\
+					/*KJ: TODO: assertion might fail if the uncorrected fq was given instead of corrected fq in realtime mode; Warn user!*/\
 					assert(p->rs_out->read_sperate[p->n_seq] != NULL);\
 					recover_UC_Read(&ucr, p->rs_out, p->n_seq);\
 					assert(memcmp(ucr.seq, p->ks->seq.s+p->opt->adaLen, l) == 0);\
@@ -845,6 +851,11 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 			/**s->mz && s->mz_buf are lists of minimzer vectors**/\
 			CALLOC(s->mz, s->n_seq), CALLOC(s->mz_buf, p->opt->n_thread), CALLOC(s->mt, p->opt->n_thread);\
 			/**calculate minimzers for each read, each read corresponds to one thread**/\
+			/*if(p->n_seq < p->rs_in->total_reads0){\
+				kt_for_dirty(p->opt->n_thread, sf##_worker_for_mz, s, s->n_seq);\
+			}else{\
+				kt_for_mod(p->opt->n_thread, sf##_worker_for_mz, s, s->n_seq-p->rs_in->total_reads0);\
+			}*/\
 			kt_for(p->opt->n_thread, sf##_worker_for_mz, s, s->n_seq);\
 			for (i = 0; i < p->opt->n_thread; ++i) free(s->mt[i].a), free(s->mz_buf[i].a);\
 			free(s->mt), free(s->mz_buf);\
@@ -873,6 +884,13 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 		sf##_st_data_t *s = (sf##_st_data_t*)in;\
 		int i, n = 1<<p->opt->pre;uint64_t n_ins = 0;\
 		/**for 0-th counting, p->pt = NULL**/\
+		/*
+		if(p->n_seq < p->rs_in->total_reads0){\
+			kt_for_dirty(p->opt->n_thread, sf##_worker_for_insert, s, n);\
+		}else{\
+			kt_for_mod(p->opt->n_thread, sf##_worker_for_insert, s, n-p->rs_in->total_reads0);\
+		}\
+		*/\
 		kt_for(p->opt->n_thread, sf##_worker_for_insert, s, n);\
 		/**n_ins is number of distinct k-mers**/\
 		for (i = 0; i < n; ++i) {\
@@ -1045,7 +1063,7 @@ ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, h
 	}**/
 	///asm_opt->num_reads is the number of fastq files
 	for (i = 0; i < (us?1:asm_o->num_reads); ++i){
-		if(asm_opt.continue_from_prev_state && i==0 && ((flag & HAF_RS_WRITE_LEN) || (flag & HAF_RS_WRITE_SEQ))) asm_opt.rl_cut=0;
+		if(asm_opt.continue_from_prev_state && i==0 && ((flag & HAF_RS_WRITE_LEN) || (flag & HAF_RS_WRITE_SEQ))) asm_opt.rl_cut=0;//KJ: since the reads may be less than rl_cut after correction enforcing rl_cut would miss loading such reads from ec.fq
 		else if(asm_opt.continue_from_prev_state && i!=0) asm_opt.rl_cut=rl_cut;
 		h = yak_count(&opt, asm_o->read_file_names[i], flag|HAF_CREATE_NEW, p0, h, flt_tab, rs, us, &n_seq);//KJ: after reading from fq files, pt update doesn't happen for num_reads (n_seq is not < total_reads)
 		if(h) n_bs += h->bs;
