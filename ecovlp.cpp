@@ -2844,8 +2844,7 @@ void push_ff_ovlp(ma_hit_t_alloc* paf, overlap_region_alloc* ov, uint32_t flag, 
         if(ov->list[k].is_match == flag) {
             //KJ: correct overlaps in non-dirty reads that involve dirty reads
             //KJ: ONE DIRECTIOAL OVERLAPS ARE COPIED DURING GRAPH GENERATION
-            if(ov->list[k].x_id<R_INF->total_reads0 && ov->list[k].y_id<R_INF->total_reads0 
-                && !(R_INF->dirty_reads[ov->list[k].x_id]&0x3F) && (R_INF->dirty_reads[ov->list[k].y_id]&0x3F)) {
+            if(ov->list[k].x_id<R_INF->total_reads0 && ov->list[k].y_id>=R_INF->total_reads0) {
                     // if(flag==1) //KJ: forward sources
                     //     dd = get_specific_overlap(&R_INF->paf[ov->list[k].y_id], ov->list[k].y_id, ov->list[k].x_id);
                     // else if(flag==2) //KJ: reverse sources
@@ -4251,7 +4250,7 @@ static void worker_hap_dc_ec_gen_new_idx(void *data, long i, int tid)
     // R_INF.trio_flag[i] = AMBIGU;
 
     //KJ: reverse here to cancel out old non-dirty overlaps being reversed when pushing to pafs and when sub_region recovering
-    if(i<R_INF.total_reads0 && !R_INF.dirty_reads[i]){
+    if(i<R_INF.total_reads0 /*&& !R_INF.dirty_reads[i]*/){
         reverse_non_dirty_ovlps(&R_INF.paf[i]);
         reverse_non_dirty_ovlps(&R_INF.reverse_paf[i]);
     }
@@ -6402,8 +6401,8 @@ uint64_t cal_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, uint64
 
     if(asm_opt.continue_from_prev_state){
         kt_for_mod(n_thre, worker_hap_ec, b, n_a-R_INF.total_reads0);///debug_for_fix
-        if(R_INF.total_reads0)
-            kt_for_dirty(n_thre, worker_hap_ec, b, R_INF.total_reads0);
+        // if(R_INF.total_reads0)
+            // kt_for_dirty(n_thre, worker_hap_ec, b, R_INF.total_reads0);
     }else{
         kt_for(n_thre, worker_hap_ec, b, n_a);///debug_for_fix
     }
@@ -6432,8 +6431,8 @@ void cal_update_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
 
     if (asm_opt.continue_from_prev_state){
         kt_for_mod(n_thre, worker_update_dc_ec, b, n_a-R_INF.total_reads0);///debug_for_fix
-        if(R_INF.total_reads0)
-            kt_for_dirty(n_thre, worker_update_dc_ec, b, R_INF.total_reads0);
+        // if(R_INF.total_reads0)
+            // kt_for_dirty(n_thre, worker_update_dc_ec, b, R_INF.total_reads0);
     }else{
         kt_for(n_thre, worker_update_dc_ec, b, n_a);///debug_for_fix
     }
@@ -6557,8 +6556,8 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
 
     if (asm_opt.continue_from_prev_state){
         kt_for_mod(n_thre, worker_hap_dc_ec, b, n_a-R_INF.total_reads0);///debug_for_fix
-        if(R_INF.total_reads0)
-            kt_for_dirty(n_thre, worker_hap_dc_ec, b, R_INF.total_reads0);
+        // if(R_INF.total_reads0)
+        //     kt_for_dirty(n_thre, worker_hap_dc_ec, b, R_INF.total_reads0);
     }else{
         kt_for(n_thre, worker_hap_dc_ec, b, n_a);///debug_for_fix
     }
@@ -6581,8 +6580,8 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
         // kt_for(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix
         if (asm_opt.continue_from_prev_state){
             kt_for_mod(n_thre, worker_hap_dc_ec0, b, n_a-R_INF.total_reads0);///debug_for_fix
-            if(R_INF.total_reads0)
-                kt_for_dirty(n_thre, worker_hap_dc_ec0, b, R_INF.total_reads0);
+            // if(R_INF.total_reads0)
+            //     kt_for_dirty(n_thre, worker_hap_dc_ec0, b, R_INF.total_reads0);
         }else{
             kt_for(n_thre, worker_hap_dc_ec0, b, n_a);///debug_for_fix
         }
@@ -6596,8 +6595,8 @@ uint64_t cal_sec_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a, in
         // kt_for(n_thre, update_scb0, b, n_a);
         if (asm_opt.continue_from_prev_state){
             kt_for_mod(n_thre, update_scb0, b, n_a-R_INF.total_reads0);///debug_for_fix
-            if(R_INF.total_reads0)
-                kt_for_dirty(n_thre, update_scb0, b, R_INF.total_reads0);
+            // if(R_INF.total_reads0)
+            //     kt_for_dirty(n_thre, update_scb0, b, R_INF.total_reads0);
         }else{
             kt_for(n_thre, update_scb0, b, n_a);///debug_for_fix
         }
@@ -6666,8 +6665,8 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
 
     if (asm_opt.continue_from_prev_state){
         sl_ec_r_mod(n_thre, n_a-R_INF.total_reads0);
-        if(R_INF.total_reads0)
-            sl_ec_r_dirty(n_thre, R_INF.total_reads0);
+        // if(R_INF.total_reads0)
+        //     sl_ec_r_dirty(n_thre, R_INF.total_reads0);
     }else{
         sl_ec_r(n_thre, n_a);
     }
@@ -6677,8 +6676,8 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
         (*tot_e) += cal_sec_ec_multiple(b, n_thre, n_a, k);
         if (asm_opt.continue_from_prev_state){
             sl_ec_r_mod(n_thre, n_a-R_INF.total_reads0);
-            if(R_INF.total_reads0)
-                sl_ec_r_dirty(n_thre, R_INF.total_reads0);
+            // if(R_INF.total_reads0)
+            //     sl_ec_r_dirty(n_thre, R_INF.total_reads0);
         }else{
             sl_ec_r(n_thre, n_a);
         }
@@ -6692,8 +6691,8 @@ void cal_ec_r(uint64_t n_thre, uint64_t round, uint64_t n_round, uint64_t n_a, u
     if((!is_sv) || (is_sv && is_cr)) {
         if (asm_opt.continue_from_prev_state){
             kt_for_mod(n_thre, worker_hap_post_rev, b, n_a-R_INF.total_reads0);///debug_for_fix
-            if(R_INF.total_reads0)
-                kt_for_dirty(n_thre, worker_hap_post_rev, b, R_INF.total_reads0);
+            // if(R_INF.total_reads0)
+            //     kt_for_dirty(n_thre, worker_hap_post_rev, b, R_INF.total_reads0);
         }else{
             kt_for(n_thre, worker_hap_post_rev, b, n_a);///debug_for_fix
         }
