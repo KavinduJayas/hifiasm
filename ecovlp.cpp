@@ -3026,9 +3026,10 @@ void mark_hc_ovlp_dirty(overlap_region_alloc* ol, All_reads *rref){
     uint32_t prev_read_hit; 
     for(uint64_t i=0; i < ol->length;i++){
        prev_read_hit = ol->list[i].y_id;
-       if((ol->list[i].is_match == 1 || ol->list[i].is_match == 2 && ol->list[i].strong && ol->list[i].without_large_indel)
+       if((ol->list[i].is_match == 1 || ol->list[i].is_match == 2) && ol->list[i].strong && ol->list[i].without_large_indel
        && prev_read_hit < rref->total_reads0
        && !rref->paf[prev_read_hit].is_fully_corrected
+       && ol->list[i].non_homopolymer_errors > 0
     ){
         rref->dirty_reads[prev_read_hit] |= 1<<rref->round;
         rref->dirty_reads[prev_read_hit] &= 0x3F;//KJ: clear the round bits
