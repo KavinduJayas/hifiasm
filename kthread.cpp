@@ -33,6 +33,7 @@ typedef struct kt_for_t {
 	ktf_worker_t *w;
 	void (*func)(void*,long,int);
 	void *data;
+	long *dirty_ids; // non-NULL in kt_for_dirty: compact list of pre-filtered dirty read IDs
 } kt_for_t;
 
 // typedef struct kt_for_t_dirty {
@@ -70,17 +71,15 @@ static void *ktf_worker_mod(void *data)
 
 static void *ktf_worker_dirty(void *data)
 {
-	ktf_worker_t*w = (ktf_worker_t*)data;
+	ktf_worker_t *w = (ktf_worker_t*)data;
 	long i;
 	for (;;) {
 		i = __sync_fetch_and_add(&w->i, w->t->n_threads);
 		if (i >= w->t->n) break;
-		if(R_INF.dirty_reads[i]&0x3F)//KJ: dirty in any round
-		w->t->func(w->t->data, i, w - w->t->w);
+		w->t->func(w->t->data, w->t->dirty_ids[i], w - w->t->w);
 	}
 	while ((i = steal_work(w->t)) >= 0)
-		if(R_INF.dirty_reads[i]&0x3F)//KJ: dirty in any round
-		w->t->func(w->t->data, i, w - w->t->w);
+		w->t->func(w->t->data, w->t->dirty_ids[i], w - w->t->w);
 	pthread_exit(0);
 }
 
@@ -120,25 +119,33 @@ void kt_for_mod(int n_threads, void (*func)(void*,long,int), void *data, long n)
 
 void kt_for_dirty(int n_threads, void (*func)(void*,long,int), void *data, long n)
 {
-	if (n_threads > 1) {
-		int i;
-		kt_for_t t;
-		pthread_t *tid;
-		t.func = func, t.data = data, t.n_threads = n_threads, t.n = n;
-		t.w = (ktf_worker_t*)calloc(n_threads, sizeof(ktf_worker_t));
-		tid = (pthread_t*)calloc(n_threads, sizeof(pthread_t));
-		for (i = 0; i < n_threads; ++i)
-			t.w[i].t = &t, t.w[i].i = i;
-		for (i = 0; i < n_threads; ++i) pthread_create(&tid[i], 0, ktf_worker_dirty, &t.w[i]);
-		for (i = 0; i < n_threads; ++i) pthread_join(tid[i], 0);
-		free(tid); free(t.w);
-	} else {
-		long j;
-		for (j = 0; j < n; ++j) {
-			if(R_INF.dirty_reads[j]&0x3F)//KJ: dirty in any round
-			func(data, j, 0);
+	// KJ:list of dirty reads so workers iterate dirty reads
+	long j, dirty_n = 0;
+	long *dirty_ids = (long*)malloc(n * sizeof(long));
+	for (j = 0; j < n; ++j)
+		if (R_INF.dirty_reads[j] & 0x3F)
+			dirty_ids[dirty_n++] = j;
+
+	if (dirty_n > 0) {
+		if (n_threads > 1) {
+			int i;
+			kt_for_t t;
+			pthread_t *tid;
+			t.func = func, t.data = data, t.n_threads = n_threads, t.n = dirty_n;
+			t.dirty_ids = dirty_ids;
+			t.w = (ktf_worker_t*)calloc(n_threads, sizeof(ktf_worker_t));
+			tid = (pthread_t*)calloc(n_threads, sizeof(pthread_t));
+			for (i = 0; i < n_threads; ++i)
+				t.w[i].t = &t, t.w[i].i = i;
+			for (i = 0; i < n_threads; ++i) pthread_create(&tid[i], 0, ktf_worker_dirty, &t.w[i]);
+			for (i = 0; i < n_threads; ++i) pthread_join(tid[i], 0);
+			free(tid); free(t.w);
+		} else {
+			for (j = 0; j < dirty_n; ++j)
+				func(data, dirty_ids[j], 0);
 		}
 	}
+	free(dirty_ids);
 }
 
 void kt_for(int n_threads, void (*func)(void*,long,int), void *data, long n)
