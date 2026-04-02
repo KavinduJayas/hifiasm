@@ -3026,14 +3026,30 @@ void mark_hc_ovlp_dirty(overlap_region_alloc* ol, All_reads *rref){
     uint32_t prev_read_hit; 
     for(uint64_t i=0; i < ol->length;i++){
        prev_read_hit = ol->list[i].y_id;
-       if((ol->list[i].is_match == 1 || ol->list[i].is_match == 2) && ol->list[i].strong && ol->list[i].without_large_indel
-       && prev_read_hit < rref->total_reads0
-       && !rref->paf[prev_read_hit].is_fully_corrected
-       && ol->list[i].non_homopolymer_errors > 0
-    ){
-        rref->dirty_reads[prev_read_hit] |= 1<<rref->round;
-        rref->dirty_reads[prev_read_hit] &= 0x3F;//KJ: clear the round bits
-        rref->dirty_reads[prev_read_hit] |= ((rref->round+1)<<6);
+       if(
+        prev_read_hit < rref->total_reads0
+        && (ol->list[i].is_match == 1 || ol->list[i].is_match == 2) 
+        && ol->list[i].strong && ol->list[i].without_large_indel
+        && !rref->paf[prev_read_hit].is_fully_corrected
+        && ol->list[i].non_homopolymer_errors > 0
+        ){
+
+            rref->dirty_reads[prev_read_hit] |= 1<<rref->round;
+            rref->dirty_reads[prev_read_hit] &= 0x3F;//KJ: clear the round bits
+             rref->dirty_reads[prev_read_hit] |= ((rref->round+1)<<6);
+            {
+                //KJ: TODO: atomic CAS to avoid race when multiple new-read threads mark the same old read dirty
+                //This may not be necessary since the bits just need to be non 0 to be
+                /*
+                uint8_t old_val, new_val;
+                do {
+                    old_val = rref->dirty_reads[prev_read_hit];
+                    new_val = ((old_val | (uint8_t)(1u << rref->round)) & 0x3Fu)
+                              | (uint8_t)((rref->round + 1) << 6);
+                } while (!__sync_bool_compare_and_swap(
+                    &rref->dirty_reads[prev_read_hit], old_val, new_val));
+                    */
+            }
        }
     }
 }
