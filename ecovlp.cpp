@@ -6511,6 +6511,31 @@ void ha_print_ovlp_stat_1(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
     // fprintf(stderr, "[M::%s::%.3f]\n", __func__, yak_realtime_0()-tt0);
 }
 
+void remove_invalid_overlaps(){
+    //KJ: iterate paf and remove overlaps going from non-dirty old batch reads
+    // to dirty old reads
+    uint64_t i, k, n;
+    for (i = 0; i < R_INF.total_reads0; i++) {
+        if (R_INF.dirty_reads[i] & 0x3F) continue; // skip dirty reads; they were fully reprocessed
+
+        n = 0;
+        for (k = 0; k < R_INF.paf[i].length; k++) {
+            uint32_t tn = R_INF.paf[i].buffer[k].tn;
+            if (tn < R_INF.total_reads0 && (R_INF.dirty_reads[tn] & 0x3F)) continue;
+            R_INF.paf[i].buffer[n++] = R_INF.paf[i].buffer[k];
+        }
+        R_INF.paf[i].length = n;
+
+        n = 0;
+        for (k = 0; k < R_INF.reverse_paf[i].length; k++) {
+            uint32_t tn = R_INF.reverse_paf[i].buffer[k].tn;
+            if (tn < R_INF.total_reads0 && (R_INF.dirty_reads[tn] & 0x3F)) continue;
+            R_INF.reverse_paf[i].buffer[n++] = R_INF.reverse_paf[i].buffer[k];
+        }
+        R_INF.reverse_paf[i].length = n;
+    }
+}
+
 void ha_print_ovlp_stat_0(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
 {
     double tt0 = yak_realtime_0();
@@ -6522,24 +6547,25 @@ void ha_print_ovlp_stat_0(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
     for (k = 0; k < n_thre; ++k) {
         b->a[k].cnt[0] = b->a[k].cnt[1] = b->a[k].cnt[2] = b->a[k].cnt[3] = b->a[k].cnt[4] = b->a[k].cnt[5] = 0;
     }
-    // if (asm_opt.continue_from_prev_state){
-    //         kt_for_mod(n_thre, worker_hap_dc_ec_gen_new_idx, b, n_a-R_INF.total_reads0);///debug_for_fix
-    //         if(R_INF.total_reads0){
-    //             for (k = 0; k < n_thre; ++k) {
-    //                 forward += b->a[k].cnt[0];
-    //                 reverse += b->a[k].cnt[1];
-    //                 strong += b->a[k].cnt[2];
-    //                 weak += b->a[k].cnt[3];
-    //                 exact += b->a[k].cnt[4];
-    //                 no_l_indel += b->a[k].cnt[5];
-    //             }
-    //             kt_for_dirty(n_thre, worker_hap_dc_ec_gen_new_idx, b, R_INF.total_reads0);
-    //     }
-    // }else{
-    //     kt_for(n_thre, worker_hap_dc_ec_gen_new_idx, b, n_a);///debug_for_fix
-    // }
+    if (asm_opt.continue_from_prev_state){
+            kt_for_mod(n_thre, worker_hap_dc_ec_gen_new_idx, b, n_a-R_INF.total_reads0);///debug_for_fix
+            if(R_INF.total_reads0){
+                for (k = 0; k < n_thre; ++k) {
+                    forward += b->a[k].cnt[0];
+                    reverse += b->a[k].cnt[1];
+                    strong += b->a[k].cnt[2];
+                    weak += b->a[k].cnt[3];
+                    exact += b->a[k].cnt[4];
+                    no_l_indel += b->a[k].cnt[5];
+                }
+                kt_for_dirty(n_thre, worker_hap_dc_ec_gen_new_idx, b, R_INF.total_reads0);
+        }
+    }else{
+        kt_for(n_thre, worker_hap_dc_ec_gen_new_idx, b, n_a);///debug_for_fix
+    }
 
-    kt_for(n_thre, worker_hap_dc_ec_gen_new_idx, b, n_a);///debug_for_fix
+    remove_invalid_overlaps();
+    // kt_for(n_thre, worker_hap_dc_ec_gen_new_idx, b, n_a);///debug_for_fix
 
     for (k = 0; k < n_thre; ++k) {
         forward += b->a[k].cnt[0];
