@@ -2141,8 +2141,8 @@ int ha_assemble(void)
 			// fprintf(stderr, "[M::%s] size of buffer: %.3fGB\n", __func__, asm_opt.mem_buf / 1073741824.0);
 		}
         
-        write_all_data_to_disk(R_INF.paf, R_INF.reverse_paf, 
-        &R_INF, "after_ec");
+        // write_all_data_to_disk(R_INF.paf, R_INF.reverse_paf, 
+        // &R_INF, "after_ec");
 		if (asm_opt.flag & HA_F_WRITE_EC) {
             if(asm_opt.is_sc) Output_corrected_fastq();
             else Output_corrected_reads();
@@ -2152,8 +2152,8 @@ int ha_assemble(void)
 		// ha_overlap_final();
         ha_ec_ff(1/**0**/);
         
-        write_all_data_to_disk(R_INF.paf, R_INF.reverse_paf, 
-        &R_INF, "ec_ff");
+        // write_all_data_to_disk(R_INF.paf, R_INF.reverse_paf, 
+        // &R_INF, "ec_ff");
 
         fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n", __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());
 		// fprintf(stderr, "\n[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n", __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());

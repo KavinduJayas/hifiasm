@@ -4215,6 +4215,12 @@ static void worker_hap_dc_ec_gen(void *data, long i, int tid)
 
     h_ec_lchain_fast(b->ab, i, &b->self_read, &b->ovlp_read, asm_opt.mz_win, asm_opt.k_mer_length, &R_INF, &b->olist, &b->clist, &b->exz, &b->v16, &b->v64, 0.02, 1, NULL, NULL, &(b->sp), &high_occ, &low_occ, 1, 1, 0, 2, UINT32_MAX, &(R_INF.paf[i]), &(R_INF.reverse_paf[i]), 0.866666);
 
+    //KJ: reverse here to cancel out old non-dirty overlaps being reversed when pushing to pafs and when sub_region recovering
+    if(i<R_INF.total_reads0 && !R_INF.dirty_reads[i]){
+        reverse_non_dirty_ovlps(&R_INF.paf[i]);
+        reverse_non_dirty_ovlps(&R_INF.reverse_paf[i]);
+    }
+
     push_ff_ovlp(&(R_INF.paf[i]), &b->olist, 1, &R_INF, b->cnt);
     push_ff_ovlp(&(R_INF.reverse_paf[i]), &b->olist, 2, &R_INF, b->cnt);
 
@@ -6478,14 +6484,22 @@ void ha_print_ovlp_stat_1(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
         b->a[k].cnt[0] = b->a[k].cnt[1] = b->a[k].cnt[2] = b->a[k].cnt[3] = b->a[k].cnt[4] = b->a[k].cnt[5] = 0;
     }
 
-    // if (asm_opt.continue_from_prev_state){
-    //     kt_for_mod(n_thre, worker_hap_dc_ec_gen, b, n_a-R_INF.total_reads0);///debug_for_fix
-    //     if(R_INF.total_reads0)
-    //         kt_for_dirty(n_thre, worker_hap_dc_ec_gen, b, R_INF.total_reads0);
-    // }else{
-    //     kt_for(n_thre, worker_hap_dc_ec_gen, b, n_a);///debug_for_fix
-    // }
-    kt_for(n_thre, worker_hap_dc_ec_gen, b, n_a);///debug_for_fix
+    if (asm_opt.continue_from_prev_state){
+        kt_for_mod(n_thre, worker_hap_dc_ec_gen, b, n_a-R_INF.total_reads0);///debug_for_fix
+        if(R_INF.total_reads0)
+            for (k = 0; k < n_thre; ++k) {
+                forward += b->a[k].cnt[0];
+                reverse += b->a[k].cnt[1];
+                strong += b->a[k].cnt[2];
+                weak += b->a[k].cnt[3];
+                exact += b->a[k].cnt[4];
+                no_l_indel += b->a[k].cnt[5];
+            }
+            kt_for_dirty(n_thre, worker_hap_dc_ec_gen, b, R_INF.total_reads0);
+    }else{
+        kt_for(n_thre, worker_hap_dc_ec_gen, b, n_a);///debug_for_fix
+    }
+    // kt_for(n_thre, worker_hap_dc_ec_gen, b, n_a);///debug_for_fix
 
     for (k = 0; k < n_thre; ++k) {
         forward += b->a[k].cnt[0];
