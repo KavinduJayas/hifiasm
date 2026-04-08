@@ -4195,6 +4195,22 @@ static void worker_hap_post_rev(void *data, long i, int tid)
     }
 }
 
+void reverse_non_dirty_ovlps(ma_hit_t_alloc* paf){
+    ma_hit_t* ovlp;
+    uint32_t ts_old;
+
+    for(uint64_t i=0; i < paf->length; i++){
+        ovlp = &paf->buffer[i];
+        if(ovlp->rev){
+            ts_old = ovlp->ts;
+            ovlp->ts = ovlp->bl - ovlp->te;
+            ovlp->te = ovlp->bl - ts_old;
+            assert((int)ovlp->ts >= 0);
+            assert((int)ovlp->te <= ovlp->bl);
+        }
+    }
+}
+
 static void worker_hap_dc_ec_gen(void *data, long i, int tid)
 {
     
@@ -4236,22 +4252,6 @@ static void worker_hap_dc_ec_gen(void *data, long i, int tid)
     copy_asg_arr(b->sp, buf0);
     **/
    refresh_ec_ovec_buf_t0(b, REFRESH_N);
-}
-
-void reverse_non_dirty_ovlps(ma_hit_t_alloc* paf){
-    ma_hit_t* ovlp;
-    uint32_t ts_old;
-
-    for(uint64_t i=0; i < paf->length; i++){
-        ovlp = &paf->buffer[i];
-        if(ovlp->rev){
-            ts_old = ovlp->ts;
-            ovlp->ts = ovlp->bl - ovlp->te;
-            ovlp->te = ovlp->bl - ts_old;
-            assert((int)ovlp->ts >= 0);
-            assert((int)ovlp->te <= ovlp->bl);
-        }
-    }
 }
 
 static void worker_hap_dc_ec_gen_new_idx(void *data, long i, int tid)
