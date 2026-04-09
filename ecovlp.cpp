@@ -6472,6 +6472,31 @@ void cal_update_ec_multiple(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
 }
 
 
+void remove_invalid_overlaps(){
+    //KJ: iterate paf and remove overlaps going from non-dirty old batch reads
+    // to dirty old reads
+    uint64_t i, k, n;
+    for (i = 0; i < R_INF.total_reads0; i++) {
+        if (R_INF.dirty_reads[i] & 0x3F) continue; // skip dirty reads; they were fully reprocessed
+
+        n = 0;
+        for (k = 0; k < R_INF.paf[i].length; k++) {
+            uint32_t tn = R_INF.paf[i].buffer[k].tn;
+            if (tn < R_INF.total_reads0 && (R_INF.dirty_reads[tn] & 0x3F)) continue;
+            R_INF.paf[i].buffer[n++] = R_INF.paf[i].buffer[k];
+        }
+        R_INF.paf[i].length = n;
+
+        n = 0;
+        for (k = 0; k < R_INF.reverse_paf[i].length; k++) {
+            uint32_t tn = R_INF.reverse_paf[i].buffer[k].tn;
+            if (tn < R_INF.total_reads0 && (R_INF.dirty_reads[tn] & 0x3F)) continue;
+            R_INF.reverse_paf[i].buffer[n++] = R_INF.reverse_paf[i].buffer[k];
+        }
+        R_INF.reverse_paf[i].length = n;
+    }
+}
+
 void ha_print_ovlp_stat_1(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
 {
     double tt0 = yak_realtime_0();
@@ -6501,6 +6526,8 @@ void ha_print_ovlp_stat_1(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
     }
     // kt_for(n_thre, worker_hap_dc_ec_gen, b, n_a);///debug_for_fix
 
+    remove_invalid_overlaps();
+
     for (k = 0; k < n_thre; ++k) {
         forward += b->a[k].cnt[0];
         reverse += b->a[k].cnt[1];
@@ -6523,31 +6550,6 @@ void ha_print_ovlp_stat_1(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
     // fprintf(stderr, "[M::%s] # corrected reads->%lu\n", __func__, rb);
     // fprintf(stderr, "[M::%s] # uncorrected reads->%lu\n", __func__, urb);
     // fprintf(stderr, "[M::%s::%.3f]\n", __func__, yak_realtime_0()-tt0);
-}
-
-void remove_invalid_overlaps(){
-    //KJ: iterate paf and remove overlaps going from non-dirty old batch reads
-    // to dirty old reads
-    uint64_t i, k, n;
-    for (i = 0; i < R_INF.total_reads0; i++) {
-        if (R_INF.dirty_reads[i] & 0x3F) continue; // skip dirty reads; they were fully reprocessed
-
-        n = 0;
-        for (k = 0; k < R_INF.paf[i].length; k++) {
-            uint32_t tn = R_INF.paf[i].buffer[k].tn;
-            if (tn < R_INF.total_reads0 && (R_INF.dirty_reads[tn] & 0x3F)) continue;
-            R_INF.paf[i].buffer[n++] = R_INF.paf[i].buffer[k];
-        }
-        R_INF.paf[i].length = n;
-
-        n = 0;
-        for (k = 0; k < R_INF.reverse_paf[i].length; k++) {
-            uint32_t tn = R_INF.reverse_paf[i].buffer[k].tn;
-            if (tn < R_INF.total_reads0 && (R_INF.dirty_reads[tn] & 0x3F)) continue;
-            R_INF.reverse_paf[i].buffer[n++] = R_INF.reverse_paf[i].buffer[k];
-        }
-        R_INF.reverse_paf[i].length = n;
-    }
 }
 
 void ha_print_ovlp_stat_0(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
