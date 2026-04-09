@@ -2147,6 +2147,8 @@ int ha_assemble(void)
             if(asm_opt.is_sc) Output_corrected_fastq();
             else Output_corrected_reads();
         }
+			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> wirte corrected reads \n", __func__, yak_realtime(),
+					yak_cpu_usage(), yak_peakrss_in_gb());
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
 		// ha_overlap_final();
