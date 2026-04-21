@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <zlib.h>
+#include <pthread.h>
 #include "Assembly.h"
 #include "Process_Read.h"
 #include "CommandLines.h"
@@ -944,6 +945,13 @@ void Output_corrected_fastq()
     free(qual_buf);
     destory_UC_Read(&g_read); kv_destroy(dv);
     fclose(fp);
+}
+
+static void *output_corrected_thread(void *arg) {
+    (void)arg;
+    if(asm_opt.is_sc) Output_corrected_fastq();
+    else Output_corrected_reads();
+    return NULL;
 }
 
 void debug_print_pob_regions()
@@ -2114,6 +2122,7 @@ int ha_assemble(void)
     // quick_debug_phasing(MC_NAME);
 	extern void ha_extract_print_list(const All_reads *rs, int n_rounds, const char *o);
 	int r, hom_cov = -1, ovlp_loaded = 0; uint64_t tot_b, tot_e;
+    pthread_t ec_write_tid; int ec_write_started = 0;
 	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name) /*&& (!asm_opt.continue_from_prev_state||load_cc_v_all(asm_opt.output_file_name))*/) {
         ovlp_loaded = 1;
 		fprintf(stderr, "[M::%s::%.3f*%.2f] ==> loaded corrected reads and overlaps from disk\n", __func__, yak_realtime(), yak_cpu_usage());
@@ -2122,8 +2131,8 @@ int ha_assemble(void)
 			exit(0);
 		}
 		if (asm_opt.continue_from_prev_state == 0 && asm_opt.flag & HA_F_WRITE_EC) {
-            if(asm_opt.is_sc) Output_corrected_fastq();
-            else Output_corrected_reads();
+            ec_write_started = 1;
+            pthread_create(&ec_write_tid, NULL, output_corrected_thread, NULL);
         }
 		if (asm_opt.continue_from_prev_state == 0 && asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
         if (asm_opt.het_cov == -1024) hap_recalculate_peaks(asm_opt.output_file_name), ovlp_loaded = 2;
@@ -2162,10 +2171,10 @@ int ha_assemble(void)
         // write_all_data_to_disk(R_INF.paf, R_INF.reverse_paf, 
         // &R_INF, "after_ec");
 		if (asm_opt.flag & HA_F_WRITE_EC) {
-            if(asm_opt.is_sc) Output_corrected_fastq();
-            else Output_corrected_reads();
+            ec_write_started = 1;
+            pthread_create(&ec_write_tid, NULL, output_corrected_thread, NULL);
         }
-			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> wirte corrected reads \n", __func__, yak_realtime(),
+			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> writing corrected reads (background)\n", __func__, yak_realtime(),
 					yak_cpu_usage(), yak_peakrss_in_gb());
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
@@ -2190,6 +2199,7 @@ int ha_assemble(void)
     build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf, 
         R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round, 
         asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded || asm_opt.continue_from_prev_state);
+    if (ec_write_started) pthread_join(ec_write_tid, NULL);
 	destory_All_reads(&R_INF);
 	return 0;
 }
