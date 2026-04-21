@@ -909,21 +909,39 @@ void Output_corrected_fastq()
 {
     long long i; uint64_t k;
     UC_Read g_read; asg8_v dv;
+    char *qual_buf = NULL; uint64_t qual_buf_size = 0;
     init_UC_Read(&g_read); kv_init(dv);
     char* gfa_name = (char*)malloc(strlen(asm_opt.output_file_name)+35);
     sprintf(gfa_name, "%s.ec.fq", asm_opt.output_file_name);
     FILE* fp = fopen(gfa_name, "w");
     free(gfa_name);
 
+    // Amortize kernel write syscalls with a large stdio buffer
+    setvbuf(fp, NULL, _IOFBF, 1 << 22); // 4 MB
+
+    // Precompute ASCII quality chars — only 4 possible values with sc_bn=2
+    char qual_lookup[4];
+    for (k = 0; k < 4; k++) qual_lookup[k] = (char)(sc_tb[k] + 33 - 1);
+
     for (i = 0; i < (long long)R_INF.total_reads; i++) {
         recover_UC_Read(&g_read, &R_INF, i);
-        fprintf(fp, "@%.*s\n", (int32_t)Get_NAME_LENGTH(R_INF, i), Get_NAME(R_INF, i));
-        fprintf(fp, "%.*s\n", (int32_t)g_read.length, g_read.seq);        
-        fprintf(fp, "+\n");
+        fputc('@', fp);
+        fwrite(Get_NAME(R_INF, i), 1, Get_NAME_LENGTH(R_INF, i), fp);
+        fputc('\n', fp);
+        fwrite(g_read.seq, 1, g_read.length, fp);
+        fputs("\n+\n", fp);
         retrive_bqual(&dv, NULL, i, -1, -1, 0, sc_bn);
-        for (k = 0; k < dv.n; k++) fprintf(fp, "%c", (char)(sc_tb[dv.a[k]] + 33 - 1));
-        fprintf(fp, "\n");
+        // Grow scratch buffer if needed
+        if (dv.n > qual_buf_size) {
+            qual_buf_size = dv.n;
+            qual_buf = (char*)realloc(qual_buf, qual_buf_size);
+        }
+        // Convert 2-bit quality indices → ASCII in one pass, then single fwrite
+        for (k = 0; k < dv.n; k++) qual_buf[k] = qual_lookup[dv.a[k]];
+        fwrite(qual_buf, 1, dv.n, fp);
+        fputc('\n', fp);
     }
+    free(qual_buf);
     destory_UC_Read(&g_read); kv_destroy(dv);
     fclose(fp);
 }
