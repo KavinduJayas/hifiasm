@@ -574,7 +574,6 @@ KSEQ_INIT(gzFile, gzread)
 #define HAF_SKIP_READ    0x40 //0100 0000
 #define HAF_UG_READ      0x80 //1000 0000
 #define HAF_COUNT_REFINE 0x100 //0001 0000 0000
-#define HAF_START_FROM_NEW 0x200 // skip reads [0, total_reads0) when continue_from_prev_state
 
 typedef struct { // global data structure for kt_pipeline()
 	const yak_copt_t *opt;
@@ -717,8 +716,6 @@ static void *sf##_worker_count(void *data, int step, void *in) /** callback for 
 		s->n_seq0 = p->n_seq;\
 		s->uq = p->opt->uq;\
 		if (p->rs_in && (p->flag & HAF_RS_READ)) {\
-            if ((p->flag & HAF_START_FROM_NEW) && p->n_seq < p->rs_in->total_reads0)\
-                p->n_seq = p->rs_in->total_reads0;\
 			while (p->n_seq < p->rs_in->total_reads) {\
 				/*if(p->n_seq < p->rs_in->total_reads0 && !p->rs_in->dirty_reads[p->n_seq++]) continue;*/\
 				if ((p->flag & HAF_SKIP_READ) && p->rs_in->trio_flag[p->n_seq] != AMBIGU) {\
@@ -1278,65 +1275,12 @@ ha_pt_t *ha_pt_gen_dp(const hifiasm_opt_t *asm_opt, ha_ct_t *ct, int flag, int n
 	return pt;
 }
 
-/* forward declarations for incremental-update helpers defined later in this file */
-static int  ha_pt_load_idx_only(ha_pt_t **r_ha_idx, const char *file_name);
-static void ha_pt_expand(ha_pt_t *pt, ha_ct_t *delta_ct, int n_thread);
-
 ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_from_store, int is_hp_mode, All_reads *rs, int *hom_cov, int *het_cov)
 {
 	int64_t cnt[YAK_N_COUNTS], tot_cnt;
 	int peak_hom, peak_het, i, extra_flag1, extra_flag2;
 	ha_ct_t *ct;
 	ha_pt_t *pt;
-
-	/* --- Incremental path for continue_from_prev_state ---
-	 * Reads are already in memory (read_from_store=1).  Load the previous PT,
-	 * count k-mers only from NEW reads [total_reads0, total_reads), expand the
-	 * PT arrays, then fill the new positions.  Old-clean reads keep their
-	 * existing (still-valid) entries; dirty reads retain stale entries which
-	 * are acceptable because overlap detection re-aligns anyway. */
-	if (asm_opt->continue_from_prev_state && read_from_store
-	    && rs->total_reads > rs->total_reads0) {
-		ha_pt_t *prev_pt = NULL;
-		if (ha_pt_load_idx_only(&prev_pt, asm_opt->output_file_name)) {
-			/* reuse coverage estimates from the previous run */
-			if (hom_cov) *hom_cov = asm_opt->hom_cov;
-			if (het_cov) *het_cov = asm_opt->het_cov;
-
-			/* count k-mers from new reads only */
-			ha_ct_t *delta_ct = ha_count(asm_opt,
-			    HAF_COUNT_EXACT|HAF_RS_READ|HAF_START_FROM_NEW,
-			    !(asm_opt->flag&HA_F_NO_HPC),
-			    asm_opt->k_mer_length, asm_opt->mz_win,
-			    NULL, flt_tab, rs, NULL, 1, NULL, 0);
-			fprintf(stderr, "[M::%s::%.3f*%.2f] ==> incremental: counted %ld distinct k-mers "
-			        "from %ld new reads\n", __func__, yak_realtime(), yak_cpu_usage(),
-			        (long)delta_ct->tot,
-			        (long)(rs->total_reads - rs->total_reads0));
-
-			/* remove singleton k-mers (same policy as normal mode with flt_tab) */
-			ha_ct_shrink(delta_ct, 2, YAK_MAX_COUNT - 1, asm_opt->thread_num);
-
-			/* expand prev_pt to make room for new-read positions */
-			ha_pt_expand(prev_pt, delta_ct, asm_opt->thread_num);
-			ha_ct_destroy(delta_ct);
-
-			/* fill positions for new reads */
-			ha_count(asm_opt,
-			    HAF_COUNT_EXACT|HAF_RS_READ|HAF_START_FROM_NEW,
-			    !(asm_opt->flag&HA_F_NO_HPC),
-			    asm_opt->k_mer_length, asm_opt->mz_win,
-			    prev_pt, flt_tab, rs, NULL, 1, NULL, 0);
-
-			fprintf(stderr, "[M::%s::%.3f*%.2f] ==> incremental: PT now has %ld k-mers, "
-			        "%ld positions\n", __func__, yak_realtime(), yak_cpu_usage(),
-			        (long)prev_pt->tot, (long)prev_pt->tot_pos);
-			return prev_pt;
-		}
-		fprintf(stderr, "[M::%s] WARNING: could not load prev PT, rebuilding from scratch\n",
-		        __func__);
-	}
-
 	//KJ: read_from_store = 1 either after the initial round or if reads are loaded with verbose gfa
 	if (read_from_store) {///if reads have already been read
 		extra_flag1 = extra_flag2 = HAF_RS_READ;
@@ -1465,162 +1409,6 @@ int load_ct_index(void **i_ct_idx, char* file_name)
 	fprintf(stderr, "[M::%s] Index has been loaded.\n", __func__);
 	free(gfa_name);
 	return 1;
-}
-
-/* Load only the flt_tab and ha_idx from a .pt_flt file, leaving All_reads and PAF untouched.
- * Returns 1 on success, 0 on failure. The caller already has a fresh flt_tab, so the file's
- * flt_tab section is skipped; we only materialize ha_idx. */
-static int ha_pt_load_idx_only(ha_pt_t **r_ha_idx, const char *file_name)
-{
-	char *gfa_name = (char*)malloc(strlen(file_name)+64);
-	sprintf(gfa_name, "%s.pt_flt", file_name);
-	FILE *fp = fopen(gfa_name, "r");
-	if (!fp) { free(gfa_name); return 0; }
-
-	char mode = 0;
-	int i;
-	ha_pt_t *ha_idx = NULL;
-
-	if (fread(&mode, 1, 1, fp) != 1) { fclose(fp); free(gfa_name); return 0; }
-	if (mode == 'f') {
-		/* skip the flt_tab — load and immediately destroy it */
-		yak_ft_t *dummy_flt = NULL;
-		yak_ft_load(&dummy_flt, fp);
-		if (dummy_flt) yak_ft_destroy(dummy_flt);
-		if (fread(&mode, 1, 1, fp) != 1) { fclose(fp); free(gfa_name); return 0; }
-	}
-	if (mode == 'h') {
-		ha_pt1_t *g;
-		CALLOC(ha_idx, 1);
-		if (fread(&ha_idx->k,       sizeof(ha_idx->k),       1, fp) != 1 ||
-		    fread(&ha_idx->pre,     sizeof(ha_idx->pre),     1, fp) != 1 ||
-		    fread(&ha_idx->tot,     sizeof(ha_idx->tot),     1, fp) != 1 ||
-		    fread(&ha_idx->tot_pos, sizeof(ha_idx->tot_pos), 1, fp) != 1) {
-			free(ha_idx); fclose(fp); free(gfa_name); return 0;
-		}
-		CALLOC(ha_idx->h, 1<<ha_idx->pre);
-		for (i = 0; i < 1<<ha_idx->pre; ++i) {
-			g = &(ha_idx->h[i]);
-			yak_pt_load(&(g->h), fp);
-			if (fread(&g->n, sizeof(g->n), 1, fp) != 1) {
-				ha_pt_destroy(ha_idx); fclose(fp); free(gfa_name); return 0;
-			}
-			MALLOC(g->a, g->n);
-			if (fread(g->a, sizeof(ha_idxpos_t), g->n, fp) != g->n) {
-				ha_pt_destroy(ha_idx); fclose(fp); free(gfa_name); return 0;
-			}
-		}
-		*r_ha_idx = ha_idx;
-		fprintf(stderr, "[M::%s::%.3f*%.2f] ==> Loaded prev PT index (%ld k-mers, %ld positions)\n",
-		        __func__, yak_realtime(), yak_cpu_usage(),
-		        (long)ha_idx->tot, (long)ha_idx->tot_pos);
-	} else {
-		fclose(fp); free(gfa_name); return 0;
-	}
-	fclose(fp);
-	free(gfa_name);
-	return 1;
-}
-
-/* Per-bucket worker: expand the position array in one PT bucket to hold extra
- * positions coming from new reads (counted in delta_ct). For each k-mer:
- *   - already in old PT : copy old positions then reserve delta_cnt empty slots
- *   - only in delta_ct  : allocate delta_cnt fresh slots
- * After this call the PT bucket accepts new-read insertions via ha_pt_insert_list. */
-typedef struct { ha_pt_t *pt; ha_ct_t *delta_ct; } pt_expand_aux_t;
-
-static void worker_pt_expand(void *data, long bi, int tid)
-{
-	pt_expand_aux_t *aux = (pt_expand_aux_t*)data;
-	ha_pt1_t *b  = &aux->pt->h[bi];
-	ha_ct1_t *dc = &aux->delta_ct->h[bi];
-	khint_t k, nk;
-	int absent;
-
-	if (!dc->h) return;
-
-	/* --- Step 1: count extra positions from delta_ct --- */
-	uint64_t extra_n = 0;
-	uint64_t new_kmer_n = 0;
-	for (nk = 0; nk < kh_end(dc->h); ++nk) {
-		if (!kh_exist(dc->h, nk)) continue;
-		uint64_t kup   = kh_key(dc->h, nk) & ~((uint64_t)YAK_MAX_COUNT);
-		uint32_t dcnt  = kh_key(dc->h, nk) &  (uint64_t)YAK_MAX_COUNT;
-		khint_t  ok    = yak_pt_get(b->h, kup);
-		if (ok != kh_end(b->h)) {
-			uint32_t old_cnt = kh_key(b->h, ok) & YAK_MAX_COUNT;
-			/* cap to avoid overflowing the 12-bit fill counter */
-			if (old_cnt + dcnt >= YAK_MAX_COUNT) dcnt = (YAK_MAX_COUNT - 1) - old_cnt;
-		} else {
-			++new_kmer_n;
-		}
-		extra_n += dcnt;
-	}
-	if (extra_n == 0) return;
-
-	/* --- Step 2: allocate new position array and hash map --- */
-	uint64_t    new_total = b->n + extra_n;
-	ha_idxpos_t *new_a;
-	MALLOC(new_a, new_total);
-
-	yak_pt_t *new_h = yak_pt_init();
-	yak_pt_resize(new_h, kh_size(b->h) + (khint_t)new_kmer_n);
-
-	uint64_t offset = 0;
-
-	/* --- Step 3: copy existing k-mers + reserve extra slots --- */
-	for (k = 0; k < kh_end(b->h); ++k) {
-		if (!kh_exist(b->h, k)) continue;
-		uint64_t kup     = kh_key(b->h, k) & ~((uint64_t)YAK_MAX_COUNT);
-		uint32_t old_cnt = kh_key(b->h, k) &  (uint64_t)YAK_MAX_COUNT;
-		uint64_t old_off = kh_val(b->h, k);
-
-		memcpy(new_a + offset, b->a + old_off, old_cnt * sizeof(ha_idxpos_t));
-
-		/* extra slots from new reads for this k-mer */
-		uint32_t dcnt = 0;
-		nk = yak_ct_get(dc->h, kup);
-		if (nk != kh_end(dc->h)) {
-			dcnt = kh_key(dc->h, nk) & YAK_MAX_COUNT;
-			if (old_cnt + dcnt >= YAK_MAX_COUNT) dcnt = (YAK_MAX_COUNT - 1) - old_cnt;
-		}
-
-		/* key encodes fill count = old_cnt so new insertions go after old positions */
-		khint_t l = yak_pt_put(new_h, kup | old_cnt, &absent);
-		kh_val(new_h, l) = offset;
-
-		offset += old_cnt + dcnt;
-	}
-
-	/* --- Step 4: add k-mers only in delta_ct (not in old PT) --- */
-	for (nk = 0; nk < kh_end(dc->h); ++nk) {
-		if (!kh_exist(dc->h, nk)) continue;
-		uint64_t kup  = kh_key(dc->h, nk) & ~((uint64_t)YAK_MAX_COUNT);
-		uint32_t dcnt = kh_key(dc->h, nk) &  (uint64_t)YAK_MAX_COUNT;
-		if (yak_pt_get(b->h, kup) != kh_end(b->h)) continue; /* handled in step 3 */
-		khint_t l = yak_pt_put(new_h, kup, &absent); /* fill count = 0 */
-		kh_val(new_h, l) = offset;
-		offset += dcnt;
-	}
-
-	/* --- Step 5: swap in new structures --- */
-	yak_pt_destroy(b->h);
-	free(b->a);
-	b->h = new_h;
-	b->a = new_a;
-	b->n = new_total;
-}
-
-static void ha_pt_expand(ha_pt_t *pt, ha_ct_t *delta_ct, int n_thread)
-{
-	pt_expand_aux_t aux; aux.pt = pt; aux.delta_ct = delta_ct;
-	kt_for(n_thread, worker_pt_expand, &aux, 1<<pt->pre);
-	/* recompute summary counters */
-	int i; pt->tot = 0; pt->tot_pos = 0;
-	for (i = 0; i < 1<<pt->pre; ++i) {
-		pt->tot     += kh_size(pt->h[i].h);
-		pt->tot_pos += pt->h[i].n;
-	}
 }
 
 int write_pt_index(void *flt_tab, ha_pt_t *ha_idx, All_reads* r, hifiasm_opt_t* opt, char* file_name)

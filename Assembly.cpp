@@ -2010,11 +2010,6 @@ void ha_ec_ff(int renew_idx)
 
     cal_ov_r(asm_opt.thread_num, R_INF.total_reads, renew_idx);
 
-    /* Persist the updated PT so the next batch can load it instead of
-     * rebuilding from all reads.  PAF entries are now fully populated. */
-    if (asm_opt.continue_from_prev_state)
-        write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
-
 	ha_pt_destroy(ha_idx); ha_idx = NULL;
 }
 
