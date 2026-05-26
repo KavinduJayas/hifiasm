@@ -81,6 +81,7 @@ static ko_longopt_t long_options[] = {
     { "ul-m",     ko_required_argument, 363},
     { "rl-cut",     ko_required_argument, 364},
     { "sc-cut",     ko_required_argument, 365},
+    { "keep-alive", ko_no_argument,       366},
     // { "path-round",     ko_required_argument, 348},
 	{ 0, 0, 0 }
 };
@@ -737,6 +738,11 @@ int check_option(hifiasm_opt_t* asm_opt)
         return 0;
     }
 
+    if (asm_opt->keep_alive && !asm_opt->continue_from_prev_state) {
+        fprintf(stderr, "[ERROR] --keep-alive requires -j\n");
+        return 0;
+    }
+
     if(asm_opt->telo_motif) {
         uint64_t k, tlen = strlen((asm_opt->telo_motif)); char c;
         if(tlen > 32) {
@@ -1005,6 +1011,8 @@ int CommandLine_process(int argc, char *argv[], hifiasm_opt_t* asm_opt)
             asm_opt->rl_cut = atol(opt.arg);
         } else if (c == 365) {
             asm_opt->sc_cut = atol(opt.arg);
+        } else if (c == 366) {
+            asm_opt->keep_alive = 1;
         } else if (c == 'l') {   ///0: disable purge_dup; 1: purge containment; 2: purge overlap
             asm_opt->purge_level_primary = asm_opt->purge_level_trio = atoi(opt.arg);
         }

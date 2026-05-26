@@ -928,6 +928,49 @@ void Output_corrected_fastq()
     fclose(fp);
 }
 
+static void Output_corrected_reads_n(int n)
+{
+    long long i;
+    UC_Read g_read;
+    init_UC_Read(&g_read);
+    char* gfa_name = (char*)malloc(strlen(asm_opt.output_file_name)+50);
+    sprintf(gfa_name, "%s.%d.new.ec.fa", asm_opt.output_file_name, n);
+    FILE* output_file = fopen(gfa_name, "w");
+    free(gfa_name);
+    for (i = 0; i < (long long)R_INF.total_reads; i++) {
+        recover_UC_Read(&g_read, &R_INF, i);
+        fwrite(">", 1, 1, output_file);
+        fwrite(Get_NAME(R_INF, i), 1, Get_NAME_LENGTH(R_INF, i), output_file);
+        fwrite("\n", 1, 1, output_file);
+        fwrite(g_read.seq, 1, g_read.length, output_file);
+        fwrite("\n", 1, 1, output_file);
+    }
+    destory_UC_Read(&g_read);
+    fclose(output_file);
+}
+
+static void Output_corrected_fastq_n(int n)
+{
+    long long i; uint64_t k;
+    UC_Read g_read; asg8_v dv;
+    init_UC_Read(&g_read); kv_init(dv);
+    char* gfa_name = (char*)malloc(strlen(asm_opt.output_file_name)+50);
+    sprintf(gfa_name, "%s.%d.ec.fq", asm_opt.output_file_name, n);
+    FILE* fp = fopen(gfa_name, "w");
+    free(gfa_name);
+    for (i = 0; i < (long long)R_INF.total_reads; i++) {
+        recover_UC_Read(&g_read, &R_INF, i);
+        fprintf(fp, "@%.*s\n", (int32_t)Get_NAME_LENGTH(R_INF, i), Get_NAME(R_INF, i));
+        fprintf(fp, "%.*s\n", (int32_t)g_read.length, g_read.seq);
+        fprintf(fp, "+\n");
+        retrive_bqual(&dv, NULL, i, -1, -1, 0, sc_bn);
+        for (k = 0; k < dv.n; k++) fprintf(fp, "%c", (char)(sc_tb[dv.a[k]] + 33 - 1));
+        fprintf(fp, "\n");
+    }
+    destory_UC_Read(&g_read); kv_destroy(dv);
+    fclose(fp);
+}
+
 void debug_print_pob_regions()
 {
     uint64_t i, total = 0;
@@ -2169,9 +2212,98 @@ int ha_assemble(void)
     if(ovlp_loaded == 2) ovlp_loaded = 0;
     ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
 
-    build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf, 
-        R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round, 
+    build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf,
+        R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round,
         asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded || asm_opt.continue_from_prev_state);
+
+    if (asm_opt.keep_alive) {
+        // Write iteration-0 corrected reads; subsequent iterations write n=1,2,...
+        int ka_iter = 0;
+        if (asm_opt.is_sc) Output_corrected_fastq_n(ka_iter);
+        else               Output_corrected_reads_n(ka_iter);
+
+        // Build filename for the previous iteration's ec file (reused as file[0])
+        char *prev_ec = (char*)malloc(strlen(asm_opt.output_file_name) + 50);
+
+        // Ensure read_file_names has room for 2 entries
+        asm_opt.read_file_names = (char**)realloc(asm_opt.read_file_names, sizeof(char*) * 2);
+
+        char *new_file_buf = NULL;
+        size_t buf_size = 0;
+        ssize_t line_len;
+        fprintf(stderr, "[M::%s] keep-alive: waiting for next fastq filename on stdin (or EOF to stop)\n", __func__);
+        while ((line_len = getline(&new_file_buf, &buf_size, stdin)) != -1) {
+            while (line_len > 0 && (new_file_buf[line_len-1] == '\n' || new_file_buf[line_len-1] == '\r'
+                                    || new_file_buf[line_len-1] == ' '))
+                new_file_buf[--line_len] = '\0';
+            if (line_len == 0) continue;
+
+            fprintf(stderr, "[M::%s] keep-alive: iteration %d, loading %s\n", __func__, ka_iter + 1, new_file_buf);
+
+            // Build the path for the previous iteration's corrected reads (file[0])
+            if (asm_opt.is_sc) sprintf(prev_ec, "%s.%d.ec.fq",     asm_opt.output_file_name, ka_iter);
+            else               sprintf(prev_ec, "%s.%d.new.ec.fa", asm_opt.output_file_name, ka_iter);
+
+            // Free old dirty_reads before reinit to avoid leak
+            free(R_INF.dirty_reads); R_INF.dirty_reads = NULL;
+
+            // Mark all current reads as the "old" baseline
+            R_INF.total_reads0 = R_INF.total_reads;
+
+            // file[0] = all corrected reads so far (exhausts n_seq 0..total_reads0-1);
+            // file[1] = new raw input batch (lands at n_seq >= total_reads0 and gets stored)
+            asm_opt.num_reads = 2;
+            asm_opt.read_file_names[0] = prev_ec;
+            asm_opt.read_file_names[1] = new_file_buf;
+            asm_opt.continue_from_prev_state = 1;
+
+            ha_flt_tab = ha_idx = NULL;
+
+            if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) {
+                ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
+                ha_opt_update_cov(&asm_opt, hom_cov);
+            }
+
+            assert(asm_opt.number_of_round > 0);
+            for (r = ha_idx ? asm_opt.number_of_round-1 : 0; r < asm_opt.number_of_round; ++r) {
+                ha_opt_reset_to_round(&asm_opt, r);
+                tot_b = tot_e = 0;
+                R_INF.round = r;
+                ha_ec(r, asm_opt.number_of_pround, (r < asm_opt.number_of_round-1)?1:0, &tot_b, &tot_e);
+                fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> corrected reads for round %d\n",
+                        __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb(), r + 1);
+                fprintf(stderr, "[M::%s] # bases: %lu; # corrected bases: %lu\n", __func__, tot_b, tot_e);
+            }
+
+            ka_iter++;
+            // Always write numbered corrected reads for use as file[0] next iteration
+            if (asm_opt.is_sc) Output_corrected_fastq_n(ka_iter);
+            else               Output_corrected_reads_n(ka_iter);
+            fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> wrote corrected reads (iter %d)\n",
+                    __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb(), ka_iter);
+
+            ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
+            ha_ec_ff(1);
+            fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n",
+                    __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());
+
+            ha_ft_destroy(ha_flt_tab); ha_flt_tab = NULL;
+            ha_triobin(&asm_opt);
+
+            ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
+            build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf,
+                R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len,
+                asm_opt.clean_round, asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate,
+                asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, 1);
+
+            fprintf(stderr, "[M::%s] keep-alive: done iter %d, waiting for next filename (or EOF)\n",
+                    __func__, ka_iter);
+        }
+        free(new_file_buf);
+        free(prev_ec);
+        fprintf(stderr, "[M::%s] keep-alive: EOF received, shutting down\n", __func__);
+    }
+
 	destory_All_reads(&R_INF);
 	return 0;
 }
