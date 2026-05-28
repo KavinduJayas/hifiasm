@@ -2139,6 +2139,7 @@ int ha_assemble(void)
     // quick_debug_phasing(MC_NAME);
 	extern void ha_extract_print_list(const All_reads *rs, int n_rounds, const char *o);
 	int r, hom_cov = -1, ovlp_loaded = 0; uint64_t tot_b, tot_e;
+    //KJ: TODO: check if -j was given with only one file name. warn user and ask if want to load prefix.ec.fq
 	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name) /*&& (!asm_opt.continue_from_prev_state||load_cc_v_all(asm_opt.output_file_name))*/) {
         ovlp_loaded = 1;
 		fprintf(stderr, "[M::%s::%.3f*%.2f] ==> loaded corrected reads and overlaps from disk\n", __func__, yak_realtime(), yak_cpu_usage());
@@ -2225,6 +2226,11 @@ int ha_assemble(void)
         // Build filename for the previous iteration's ec file (reused as file[0])
         char *prev_ec = (char*)malloc(strlen(asm_opt.output_file_name) + 50);
 
+        // Per-iteration output prefix so each build_string_graph_without_clean
+        // writes to "<base>.iter1", "<base>.iter2", ... instead of overwriting.
+        char *base_output_file_name = asm_opt.output_file_name;
+        char *iter_output_file_name = (char*)malloc(strlen(asm_opt.output_file_name) + 30);
+
         // Ensure read_file_names has room for 2 entries
         asm_opt.read_file_names = (char**)realloc(asm_opt.read_file_names, sizeof(char*) * 2);
 
@@ -2291,16 +2297,20 @@ int ha_assemble(void)
             ha_triobin(&asm_opt);
 
             ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
+            sprintf(iter_output_file_name, "%s.iter%d", base_output_file_name, ka_iter);
+            asm_opt.output_file_name = iter_output_file_name;
             build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf,
                 R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len,
                 asm_opt.clean_round, asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate,
                 asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, 1);
+            asm_opt.output_file_name = base_output_file_name;
 
             fprintf(stderr, "[M::%s] keep-alive: done iter %d, waiting for next filename (or EOF)\n",
                     __func__, ka_iter);
         }
         free(new_file_buf);
         free(prev_ec);
+        free(iter_output_file_name);
         fprintf(stderr, "[M::%s] keep-alive: EOF received, shutting down\n", __func__);
     }
 
