@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <zlib.h>
+#include <pthread.h>
 #include "Assembly.h"
 #include "Process_Read.h"
 #include "CommandLines.h"
@@ -909,25 +910,48 @@ void Output_corrected_fastq()
 {
     long long i; uint64_t k;
     UC_Read g_read; asg8_v dv;
+    char *qual_buf = NULL; uint64_t qual_buf_size = 0;
     init_UC_Read(&g_read); kv_init(dv);
     char* gfa_name = (char*)malloc(strlen(asm_opt.output_file_name)+35);
     sprintf(gfa_name, "%s.ec.fq", asm_opt.output_file_name);
     FILE* fp = fopen(gfa_name, "w");
     free(gfa_name);
 
+    // Amortize kernel write syscalls with a large stdio buffer
+    setvbuf(fp, NULL, _IOFBF, 1 << 22); // 4 MB
+
+    // Precompute ASCII quality chars — only 4 possible values with sc_bn=2
+    char qual_lookup[4];
+    for (k = 0; k < 4; k++) qual_lookup[k] = (char)(sc_tb[k] + 33 - 1);
+
     for (i = 0; i < (long long)R_INF.total_reads; i++) {
         recover_UC_Read(&g_read, &R_INF, i);
-        fprintf(fp, "@%.*s\n", (int32_t)Get_NAME_LENGTH(R_INF, i), Get_NAME(R_INF, i));
-        fprintf(fp, "%.*s\n", (int32_t)g_read.length, g_read.seq);        
-        fprintf(fp, "+\n");
+        fputc('@', fp);
+        fwrite(Get_NAME(R_INF, i), 1, Get_NAME_LENGTH(R_INF, i), fp);
+        fputc('\n', fp);
+        fwrite(g_read.seq, 1, g_read.length, fp);
+        fputs("\n+\n", fp);
         retrive_bqual(&dv, NULL, i, -1, -1, 0, sc_bn);
-        for (k = 0; k < dv.n; k++) fprintf(fp, "%c", (char)(sc_tb[dv.a[k]] + 33 - 1));
-        fprintf(fp, "\n");
+        // Grow scratch buffer if needed
+        if (dv.n > qual_buf_size) {
+            qual_buf_size = dv.n;
+            qual_buf = (char*)realloc(qual_buf, qual_buf_size);
+        }
+        // Convert 2-bit quality indices → ASCII in one pass, then single fwrite
+        for (k = 0; k < dv.n; k++) qual_buf[k] = qual_lookup[dv.a[k]];
+        fwrite(qual_buf, 1, dv.n, fp);
+        fputc('\n', fp);
     }
+    free(qual_buf);
     destory_UC_Read(&g_read); kv_destroy(dv);
     fclose(fp);
 }
 
+static void *output_corrected_thread(void *arg) {
+    (void)arg;
+    if(asm_opt.is_sc) Output_corrected_fastq();
+    else Output_corrected_reads();
+    return NULL;
 static void Output_corrected_reads_n(int n)
 {
     long long i;
@@ -2139,6 +2163,7 @@ int ha_assemble(void)
     // quick_debug_phasing(MC_NAME);
 	extern void ha_extract_print_list(const All_reads *rs, int n_rounds, const char *o);
 	int r, hom_cov = -1, ovlp_loaded = 0; uint64_t tot_b, tot_e;
+    pthread_t ec_write_tid; int ec_write_started = 0;
     //KJ: TODO: check if -j was given with only one file name. warn user and ask if want to load prefix.ec.fq
 	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name) /*&& (!asm_opt.continue_from_prev_state||load_cc_v_all(asm_opt.output_file_name))*/) {
         ovlp_loaded = 1;
@@ -2148,8 +2173,8 @@ int ha_assemble(void)
 			exit(0);
 		}
 		if (asm_opt.continue_from_prev_state == 0 && asm_opt.flag & HA_F_WRITE_EC) {
-            if(asm_opt.is_sc) Output_corrected_fastq();
-            else Output_corrected_reads();
+            ec_write_started = 1;
+            pthread_create(&ec_write_tid, NULL, output_corrected_thread, NULL);
         }
 		if (asm_opt.continue_from_prev_state == 0 && asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
         if (asm_opt.het_cov == -1024) hap_recalculate_peaks(asm_opt.output_file_name), ovlp_loaded = 2;
@@ -2188,10 +2213,10 @@ int ha_assemble(void)
         // write_all_data_to_disk(R_INF.paf, R_INF.reverse_paf, 
         // &R_INF, "after_ec");
 		if (asm_opt.flag & HA_F_WRITE_EC) {
-            if(asm_opt.is_sc) Output_corrected_fastq();
-            else Output_corrected_reads();
+            ec_write_started = 1;
+            pthread_create(&ec_write_tid, NULL, output_corrected_thread, NULL);
         }
-			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> wirte corrected reads \n", __func__, yak_realtime(),
+			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> writing corrected reads (background)\n", __func__, yak_realtime(),
 					yak_cpu_usage(), yak_peakrss_in_gb());
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
@@ -2216,6 +2241,7 @@ int ha_assemble(void)
     build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf,
         R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round,
         asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded || asm_opt.continue_from_prev_state);
+    if (ec_write_started) pthread_join(ec_write_tid, NULL);
 
     if (asm_opt.keep_alive) {
         // Write iteration-0 corrected reads; subsequent iterations write n=1,2,...
