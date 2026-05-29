@@ -952,6 +952,8 @@ static void *output_corrected_thread(void *arg) {
     if(asm_opt.is_sc) Output_corrected_fastq();
     else Output_corrected_reads();
     return NULL;
+}
+
 static void Output_corrected_reads_n(int n)
 {
     long long i;
@@ -993,6 +995,16 @@ static void Output_corrected_fastq_n(int n)
     }
     destory_UC_Read(&g_read); kv_destroy(dv);
     fclose(fp);
+}
+
+typedef struct { int n; } ka_write_arg_t;
+
+static void *output_corrected_n_thread(void *arg) {
+    ka_write_arg_t *a = (ka_write_arg_t *)arg;
+    if (asm_opt.is_sc) Output_corrected_fastq_n(a->n);
+    else               Output_corrected_reads_n(a->n);
+    free(a);
+    return NULL;
 }
 
 void debug_print_pob_regions()
@@ -2164,6 +2176,7 @@ int ha_assemble(void)
 	extern void ha_extract_print_list(const All_reads *rs, int n_rounds, const char *o);
 	int r, hom_cov = -1, ovlp_loaded = 0; uint64_t tot_b, tot_e;
     pthread_t ec_write_tid; int ec_write_started = 0;
+    pthread_t ka_write_tid; int ka_write_started = 0;
     //KJ: TODO: check if -j was given with only one file name. warn user and ask if want to load prefix.ec.fq
 	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name) /*&& (!asm_opt.continue_from_prev_state||load_cc_v_all(asm_opt.output_file_name))*/) {
         ovlp_loaded = 1;
@@ -2244,10 +2257,8 @@ int ha_assemble(void)
     if (ec_write_started) pthread_join(ec_write_tid, NULL);
 
     if (asm_opt.keep_alive) {
-        // Write iteration-0 corrected reads; subsequent iterations write n=1,2,...
+        // iter-0 corrected reads already written by the main ec_write_tid thread above
         int ka_iter = 0;
-        if (asm_opt.is_sc) Output_corrected_fastq_n(ka_iter);
-        else               Output_corrected_reads_n(ka_iter);
 
         // Build filename for the previous iteration's ec file (reused as file[0])
         char *prev_ec = (char*)malloc(strlen(asm_opt.output_file_name) + 50);
@@ -2270,11 +2281,20 @@ int ha_assemble(void)
                 new_file_buf[--line_len] = '\0';
             if (line_len == 0) continue;
 
+            // Must finish writing iter N before using it as file[0] for EC
+            if (ka_write_started) { pthread_join(ka_write_tid, NULL); ka_write_started = 0; }
+
             fprintf(stderr, "[M::%s] keep-alive: iteration %d, loading %s\n", __func__, ka_iter + 1, new_file_buf);
 
             // Build the path for the previous iteration's corrected reads (file[0])
-            if (asm_opt.is_sc) sprintf(prev_ec, "%s.%d.ec.fq",     asm_opt.output_file_name, ka_iter);
-            else               sprintf(prev_ec, "%s.%d.new.ec.fa", asm_opt.output_file_name, ka_iter);
+            // iter-0 uses the main (non-numbered) ec file written before keep-alive starts
+            if (ka_iter == 0) {
+                if (asm_opt.is_sc) sprintf(prev_ec, "%s.ec.fq",     asm_opt.output_file_name);
+                else               sprintf(prev_ec, "%s.new.ec.fa", asm_opt.output_file_name);
+            } else {
+                if (asm_opt.is_sc) sprintf(prev_ec, "%s.%d.ec.fq",     asm_opt.output_file_name, ka_iter);
+                else               sprintf(prev_ec, "%s.%d.new.ec.fa", asm_opt.output_file_name, ka_iter);
+            }
 
             // Free old dirty_reads before reinit to avoid leak
             free(R_INF.dirty_reads); R_INF.dirty_reads = NULL;
@@ -2308,10 +2328,10 @@ int ha_assemble(void)
             }
 
             ka_iter++;
-            // Always write numbered corrected reads for use as file[0] next iteration
-            if (asm_opt.is_sc) Output_corrected_fastq_n(ka_iter);
-            else               Output_corrected_reads_n(ka_iter);
-            fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> wrote corrected reads (iter %d)\n",
+            // Start write in background — reads are stable after EC; overlaps with ha_ec_ff
+            { ka_write_arg_t *a = (ka_write_arg_t*)malloc(sizeof *a); a->n = ka_iter;
+              pthread_create(&ka_write_tid, NULL, output_corrected_n_thread, a); ka_write_started = 1; }
+            fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> writing corrected reads (background, iter %d)\n",
                     __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb(), ka_iter);
 
             ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
@@ -2334,6 +2354,7 @@ int ha_assemble(void)
             fprintf(stderr, "[M::%s] keep-alive: done iter %d, waiting for next filename (or EOF)\n",
                     __func__, ka_iter);
         }
+        if (ka_write_started) { pthread_join(ka_write_tid, NULL); ka_write_started = 0; }
         free(new_file_buf);
         free(prev_ec);
         free(iter_output_file_name);
