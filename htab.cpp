@@ -35,6 +35,7 @@ const unsigned char seq_nt4_table[256] = { // translate ACGT to 0123
 
 void *ha_flt_tab;
 ha_pt_t *ha_idx;
+ha_pt_t *ha_idx_delta;
 void *ha_flt_tab_hp;
 ha_pt_t *ha_idx_hp;
 void *ha_ct_table;
@@ -311,6 +312,9 @@ struct ha_pt_s {
 	int k, pre;
 	uint64_t tot, tot_pos;
 	ha_pt1_t *h;
+	uint8_t  *read_mz_round; // [rid]: 0xFF = stale (dirty read updated since last insert)
+	uint64_t  n_reads;       // length of read_mz_round
+	uint8_t   mz_round;     // insertion-round stamp written into read_mz_round at insert time
 };
 
 typedef struct {
@@ -385,6 +389,7 @@ ha_pt_t *ha_pt_gen(ha_ct_t *ct, int n_thread, int is_l)
 	ha_ct_destroy_bf(ct);
 	CALLOC(pt, 1);
 	pt->k = ct->k, pt->pre = ct->pre, pt->tot = ct->tot;
+	pt->read_mz_round = NULL; pt->n_reads = 0; pt->mz_round = 0;
 	CALLOC(pt->h, 1<<pt->pre);
 	for (i = 0; i < 1<<pt->pre; ++i) {
 		pt->h[i].h = yak_pt_init();
@@ -452,7 +457,8 @@ int ha_pt_insert_list(ha_pt_t *h, int n, const ha_mz1_t *a)
 		assert(n < YAK_MAX_COUNT);
 		p = &g->a[kh_val(g->h, k) + n];
 		p->rid = a[j].rid, p->rev = a[j].rev, p->pos = a[j].pos, p->span = a[j].span;
-		//(uint64_t)a[j].rid<<36 | (uint64_t)a[j].rev<<35 | (uint64_t)a[j].pos<<8 | (uint64_t)a[j].span;
+		if (h->read_mz_round && a[j].rid < h->n_reads)
+			h->read_mz_round[a[j].rid] = h->mz_round;
 		++kh_key(g->h, k);
 		++n_ins;
 	}
@@ -510,9 +516,11 @@ void ha_pt_destroy(ha_pt_t *h)
 		}
 		if(h->h[i].al){
 			free(h->h[i].al); h->h[i].al = NULL;
-		}	
+		}
 	}
-	free(h->h); free(h);
+	free(h->h);
+	if (h->read_mz_round) free(h->read_mz_round);
+	free(h);
 }
 
 const ha_idxpos_t *ha_pt_get(const ha_pt_t *h, uint64_t hash, int *n)
@@ -546,6 +554,11 @@ const int ha_pt_cnt(const ha_pt_t *h, uint64_t hash)
 	return kh_key(g->h, k) & YAK_MAX_COUNT;
 }
 
+const uint8_t *ha_pt_mz_round(const ha_pt_t *pt)
+{
+	return pt ? pt->read_mz_round : NULL;
+}
+
 inline uint64_t flt_quals(char *sc_a, uint64_t sc_l, uint64_t sc_off, int64_t sc_cut)
 {
 	int64_t sc_min = sc_l * sc_cut, sc_tot; uint64_t k;
@@ -574,6 +587,7 @@ KSEQ_INIT(gzFile, gzread)
 #define HAF_SKIP_READ    0x40 //0100 0000
 #define HAF_UG_READ      0x80 //1000 0000
 #define HAF_COUNT_REFINE 0x100 //0001 0000 0000
+#define HAF_INCREMENTAL  0x200 // only process new reads ([total_reads0,n)) and dirty old reads
 
 typedef struct { // global data structure for kt_pipeline()
 	const yak_copt_t *opt;
@@ -663,7 +677,8 @@ int sf##_ha_pt_insert_list(ha_pt_t *h, int n, const HType *a)\
 		assert(n < YAK_MAX_COUNT);\
 		p = &g->Ia[kh_val(g->h, k) + n];\
 		p->rid = a[j].rid, p->rev = a[j].rev, p->pos = a[j].pos, p->span = a[j].span;\
-		/**(uint64_t)a[j].rid<<36 | (uint64_t)a[j].rev<<35 | (uint64_t)a[j].pos<<8 | (uint64_t)a[j].span;**/\
+		if (h->read_mz_round && (uint64_t)a[j].rid < h->n_reads)\
+			h->read_mz_round[a[j].rid] = h->mz_round;\
 		++kh_key(g->h, k);\
 		++n_ins;\
 	}\
@@ -685,6 +700,13 @@ static void sf##_worker_for_insert(void *data, long i, int tid) /** callback for
 static void sf##_worker_for_mz(void *data, long i, int tid)\
 {\
 	sf##_st_data_t *s = (sf##_st_data_t*)data;\
+	if (s->p->flag & HAF_INCREMENTAL) {\
+		uint64_t rid = s->n_seq0 + i;\
+		if (rid < s->p->rs_in->total_reads0 && !(s->p->rs_in->dirty_reads[rid] & 0x3F)) {\
+			s->mz[i].n = 0; s->mz[i].m = 0; s->mz[i].a = NULL;\
+			return;\
+		}\
+	}\
 	/**get the corresponding minimzer vector of this read**/\
 	VType *b = &s->mz_buf[tid];\
 	s->mz_buf[tid].n = 0;\
@@ -1275,7 +1297,7 @@ ha_pt_t *ha_pt_gen_dp(const hifiasm_opt_t *asm_opt, ha_ct_t *ct, int flag, int n
 	return pt;
 }
 
-ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_from_store, int is_hp_mode, All_reads *rs, int *hom_cov, int *het_cov)
+ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_from_store, int is_hp_mode, All_reads *rs, int *hom_cov, int *het_cov, int extra_flags)
 {
 	int64_t cnt[YAK_N_COUNTS], tot_cnt;
 	int peak_hom, peak_het, i, extra_flag1, extra_flag2;
@@ -1292,6 +1314,8 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 		extra_flag2 = HAF_RS_READ;
 	}
 	if(is_hp_mode) extra_flag1 |= HAF_SKIP_READ, extra_flag2 |= HAF_SKIP_READ;
+	extra_flag1 |= extra_flags;
+	extra_flag2 |= extra_flags;
 
 	ct = ha_count(asm_opt, HAF_COUNT_EXACT|extra_flag1,  !(asm_opt->flag&HA_F_NO_HPC), asm_opt->k_mer_length, asm_opt->mz_win, NULL, flt_tab, rs, NULL, 1, NULL, 0);
 	fprintf(stderr, "[M::%s::%.3f*%.2f] ==> counted %ld distinct minimizer k-mers\n", __func__,
@@ -1318,7 +1342,10 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 	if(!(asm_opt->flag & HA_F_FAST))
 	{
 		fprintf(stderr, "[M::%s::] counting in normal mode\n", __func__);
-		pt = ha_pt_gen(ct, asm_opt->thread_num, 0);//KJ: second call with ct 
+		pt = ha_pt_gen(ct, asm_opt->thread_num, 0);//KJ: second call with ct
+		// allocate per-read round tracking before position insertion
+		pt->n_reads = rs->total_reads;
+		CALLOC(pt->read_mz_round, pt->n_reads);
 		ha_count(asm_opt, HAF_COUNT_EXACT|extra_flag2,  !(asm_opt->flag&HA_F_NO_HPC), asm_opt->k_mer_length, asm_opt->mz_win, pt, flt_tab, rs, NULL, 1, NULL, 0);
 		assert((uint64_t)tot_cnt == pt->tot_pos);
 	}
@@ -1326,11 +1353,27 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 	{
 		fprintf(stderr, "[M::%s::] counting in fast mode\n", __func__);
 		pt = ha_pt_gen_dp(asm_opt, ct, HAF_COUNT_EXACT|extra_flag2, asm_opt->thread_num, flt_tab, rs, peak_hom, peak_het);
+		pt->n_reads = rs->total_reads;
+		CALLOC(pt->read_mz_round, pt->n_reads);
 	}
 	//ha_pt_sort(pt, asm_opt->thread_num);
 	fprintf(stderr, "[M::%s::%.3f*%.2f] ==> indexed %ld positions, counted %ld distinct minimizer k-mers\n", __func__,
 			yak_realtime(), yak_cpu_usage(), (long)pt->tot_pos, (long)pt->tot);
 	return pt;
+}
+
+void ha_pt_mark_stale(ha_pt_t *pt, All_reads *rs)
+{
+	uint64_t i;
+	if (!pt || !pt->read_mz_round) return;
+	for (i = 0; i < rs->total_reads0 && i < pt->n_reads; ++i)
+		if (rs->dirty_reads[i] & 0x3F)
+			pt->read_mz_round[i] = 0xFF;
+}
+
+ha_pt_t *ha_pt_gen_delta(const hifiasm_opt_t *asm_opt, const void *flt_tab, All_reads *rs, int *hom_cov, int *het_cov)
+{
+	return ha_pt_gen(asm_opt, flt_tab, 1, 0, rs, hom_cov, het_cov, HAF_INCREMENTAL);
 }
 
 int query_ct_index(void* ct_idx, uint64_t hash)
@@ -1411,6 +1454,68 @@ int load_ct_index(void **i_ct_idx, char* file_name)
 	return 1;
 }
 
+int ha_pt_table_save(const ha_pt_t *pt, const char *file_name)
+{
+	int i;
+	ha_pt1_t *g;
+	char *path = (char*)malloc(strlen(file_name) + 16);
+	sprintf(path, "%s.ff_pt", file_name);
+	FILE *fp = fopen(path, "w");
+	free(path);
+	if (!fp) return 0;
+	fwrite(&pt->k,       sizeof(pt->k),       1, fp);
+	fwrite(&pt->pre,     sizeof(pt->pre),      1, fp);
+	fwrite(&pt->tot,     sizeof(pt->tot),      1, fp);
+	fwrite(&pt->tot_pos, sizeof(pt->tot_pos),  1, fp);
+	for (i = 0; i < 1<<pt->pre; ++i) {
+		g = &pt->h[i];
+		yak_pt_save(g->h, fp);
+		fwrite(&g->n, sizeof(g->n), 1, fp);
+		fwrite(g->a, sizeof(ha_idxpos_t), g->n, fp);
+	}
+	fwrite(&pt->n_reads,  sizeof(pt->n_reads),  1, fp);
+	fwrite(&pt->mz_round, sizeof(pt->mz_round), 1, fp);
+	if (pt->read_mz_round && pt->n_reads > 0)
+		fwrite(pt->read_mz_round, 1, pt->n_reads, fp);
+	fclose(fp);
+	fprintf(stderr, "[M::%s] ff position table saved.\n", __func__);
+	return 1;
+}
+
+ha_pt_t *ha_pt_table_load(const char *file_name)
+{
+	int i;
+	ha_pt1_t *g;
+	char *path = (char*)malloc(strlen(file_name) + 16);
+	sprintf(path, "%s.ff_pt", file_name);
+	FILE *fp = fopen(path, "r");
+	free(path);
+	if (!fp) return NULL;
+	ha_pt_t *pt;
+	CALLOC(pt, 1);
+	fread(&pt->k,       sizeof(pt->k),       1, fp);
+	fread(&pt->pre,     sizeof(pt->pre),      1, fp);
+	fread(&pt->tot,     sizeof(pt->tot),      1, fp);
+	fread(&pt->tot_pos, sizeof(pt->tot_pos),  1, fp);
+	CALLOC(pt->h, 1<<pt->pre);
+	for (i = 0; i < 1<<pt->pre; ++i) {
+		g = &pt->h[i];
+		yak_pt_load(&g->h, fp);
+		fread(&g->n, sizeof(g->n), 1, fp);
+		MALLOC(g->a, g->n);
+		fread(g->a, sizeof(ha_idxpos_t), g->n, fp);
+	}
+	fread(&pt->n_reads,  sizeof(pt->n_reads),  1, fp);
+	fread(&pt->mz_round, sizeof(pt->mz_round), 1, fp);
+	if (pt->n_reads > 0) {
+		MALLOC(pt->read_mz_round, pt->n_reads);
+		fread(pt->read_mz_round, 1, pt->n_reads, fp);
+	}
+	fclose(fp);
+	fprintf(stderr, "[M::%s] ff position table loaded.\n", __func__);
+	return pt;
+}
+
 int write_pt_index(void *flt_tab, ha_pt_t *ha_idx, All_reads* r, hifiasm_opt_t* opt, char* file_name)
 {
     char* gfa_name = (char*)malloc(strlen(file_name)+64);
@@ -1439,13 +1544,17 @@ int write_pt_index(void *flt_tab, ha_pt_t *ha_idx, All_reads* r, hifiasm_opt_t* 
 		fwrite(&ha_idx->tot, sizeof(ha_idx->tot), 1, fp);
 		fwrite(&ha_idx->tot_pos, sizeof(ha_idx->tot_pos), 1, fp);
 
-		for (i = 0; i < 1<<ha_idx->pre; ++i) 
+		for (i = 0; i < 1<<ha_idx->pre; ++i)
 		{
 			g = &(ha_idx->h[i]);
 			yak_pt_save(g->h, fp);
 			fwrite(&g->n, sizeof(g->n), 1, fp);
 			fwrite(g->a, sizeof(ha_idxpos_t), g->n, fp);
 		}
+		fwrite(&ha_idx->n_reads, sizeof(ha_idx->n_reads), 1, fp);
+		fwrite(&ha_idx->mz_round, sizeof(ha_idx->mz_round), 1, fp);
+		if (ha_idx->read_mz_round && ha_idx->n_reads > 0)
+			fwrite(ha_idx->read_mz_round, 1, ha_idx->n_reads, fp);
 	}
 
 	fwrite(&opt->number_of_round, sizeof(opt->number_of_round), 1, fp);
@@ -1532,6 +1641,12 @@ int load_pt_index(void **r_flt_tab, ha_pt_t **r_ha_idx, All_reads *r, hifiasm_op
 			f_flag += fread(g->a, sizeof(ha_idxpos_t), g->n, fp);
 
 			pos_time += yak_realtime() - pos_s_time;
+		}
+		f_flag += fread(&ha_idx->n_reads, sizeof(ha_idx->n_reads), 1, fp);
+		f_flag += fread(&ha_idx->mz_round, sizeof(ha_idx->mz_round), 1, fp);
+		if (ha_idx->n_reads > 0) {
+			MALLOC(ha_idx->read_mz_round, ha_idx->n_reads);
+			f_flag += fread(ha_idx->read_mz_round, 1, ha_idx->n_reads, fp);
 		}
 		(*r_ha_idx) = ha_idx;
 

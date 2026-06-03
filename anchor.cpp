@@ -47,6 +47,8 @@ KRADIX_SORT_INIT(ha_mz1_v_srt, ha_mz1_t, ha_mz1_t_key, member_size(ha_mz1_t, x))
 typedef struct {
 	int n;
 	const ha_idxpos_t *a;
+	int nd;                  // delta table entry count (0 if no delta)
+	const ha_idxpos_t *ad;  // delta table positions
 } seed1_t;
 
 typedef struct {
@@ -93,6 +95,7 @@ int ha_ov_type(const overlap_region *r, uint32_t len)
 void ha_get_new_candidates(ha_abuf_t *ab, int64_t rid, UC_Read *ucr, overlap_region_alloc *overlap_list, Candidates_list *cl, double bw_thres, int max_n_chain, int keep_whole_chain,
 						   kvec_t_u8_warp* k_flag, kvec_t_u64_warp* chain_idx, void *ha_flt_tab, ha_pt_t *ha_idx, overlap_region* f_cigar, kvec_t_u64_warp* dbg_ct, st_mt_t *sp)
 {
+	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
 	uint32_t i, rlen;
 	uint64_t k, l;
 	uint32_t low_occ = asm_opt.hom_cov * HA_KMER_GOOD_RATIO;
@@ -117,7 +120,10 @@ void ha_get_new_candidates(ha_abuf_t *ab, int64_t rid, UC_Read *ucr, overlap_reg
 		int n;
 		ab->seed[i].a = ha_pt_get(ha_idx, ab->mz.a[i].x, &n);
 		ab->seed[i].n = n;
-		ab->n_a += n;
+		if (ha_idx_delta) {
+			ab->seed[i].ad = ha_pt_get(ha_idx_delta, ab->mz.a[i].x, &ab->seed[i].nd);
+		} else { ab->seed[i].ad = NULL; ab->seed[i].nd = 0; }
+		ab->n_a += n + ab->seed[i].nd;
 	}
 	if (ab->n_a > ab->m_a) {
 		ab->m_a = ab->n_a;
@@ -129,16 +135,28 @@ void ha_get_new_candidates(ha_abuf_t *ab, int64_t rid, UC_Read *ucr, overlap_reg
 		///z is one of the minimizer
 		ha_mz1_t *z = &ab->mz.a[i];
 		seed1_t *s = &ab->seed[i];
+		int total_cnt = s->n + s->nd;
 		for (j = 0; j < s->n; ++j) {
 			const ha_idxpos_t *y = &s->a[j];
+			if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
 			an->other_off = y->pos;
 			an->self_off = rev? ucr->length - 1 - (z->pos + 1 - z->span) : z->pos;
-			an->cnt = s->n;
+			an->cnt = total_cnt;
+			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->other_off;
+		}
+		for (j = 0; j < s->nd; ++j) {
+			const ha_idxpos_t *y = &s->ad[j];
+			anchor1_t *an = &ab->a[k++];
+			uint8_t rev = z->rev == y->rev? 0 : 1;
+			an->other_off = y->pos;
+			an->self_off = rev? ucr->length - 1 - (z->pos + 1 - z->span) : z->pos;
+			an->cnt = total_cnt;
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->other_off;
 		}
 	}
+	ab->n_a = k;
 
 	// sort anchors
 	radix_sort_ha_an1(ab->a, ab->a + ab->n_a);
@@ -542,6 +560,7 @@ void ha_get_inter_candidates(ha_abufl_t *ab, uint64_t id, char* r, uint64_t rlen
 void ha_get_ug_candidates(ha_abuf_t *ab, int64_t rid, ma_utg_t *u, ma_utg_v *ua, overlap_region_alloc *overlap_list, Candidates_list *cl, double bw_thres, int max_n_chain, int keep_whole_chain, kvec_t_u8_warp* k_flag,
 kvec_t_u64_warp* chain_idx, void *ha_flt_tab, ha_pt_t *ha_idx, overlap_region* f_cigar, kvec_t_u64_warp* dbg_ct, double chain_match_rate)
 {
+    const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
     uint32_t i;
     uint64_t k, l;
 
@@ -562,7 +581,10 @@ kvec_t_u64_warp* chain_idx, void *ha_flt_tab, ha_pt_t *ha_idx, overlap_region* f
         int n;
         ab->seed[i].a = ha_pt_get(ha_idx, ab->mz.a[i].x, &n);
         ab->seed[i].n = n;
-        ab->n_a += n;
+        if (ha_idx_delta) {
+            ab->seed[i].ad = ha_pt_get(ha_idx_delta, ab->mz.a[i].x, &ab->seed[i].nd);
+        } else { ab->seed[i].ad = NULL; ab->seed[i].nd = 0; }
+        ab->n_a += n + ab->seed[i].nd;
     }
     if (ab->n_a > ab->m_a) {
         ab->m_a = ab->n_a;
@@ -576,6 +598,16 @@ kvec_t_u64_warp* chain_idx, void *ha_flt_tab, ha_pt_t *ha_idx, overlap_region* f
         seed1_t *s = &ab->seed[i];
         for (j = 0; j < s->n; ++j) {
             const ha_idxpos_t *y = &s->a[j];
+            if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+            anchor1_t *an = &ab->a[k++];
+            uint8_t rev = z->rev == y->rev? 0 : 1;
+            an->other_off = y->pos;
+            an->self_off = rev? u->len - 1 - (z->pos + 1 - z->span) : z->pos;
+            an->cnt = 1;
+            an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->other_off;
+        }
+        for (j = 0; j < s->nd; ++j) {
+            const ha_idxpos_t *y = &s->ad[j];
             anchor1_t *an = &ab->a[k++];
             uint8_t rev = z->rev == y->rev? 0 : 1;
             an->other_off = y->pos;
@@ -584,6 +616,7 @@ kvec_t_u64_warp* chain_idx, void *ha_flt_tab, ha_pt_t *ha_idx, overlap_region* f
             an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->other_off;
         }
     }
+    ab->n_a = k;
 
     // sort anchors
     radix_sort_ha_an1(ab->a, ab->a + ab->n_a);
@@ -984,11 +1017,12 @@ uint32_t *low_occ)
 }
 
 
-void minimizers_qgen0(ha_abuf_t *ab, char* rs, int64_t rl, uint64_t mz_w, uint64_t mz_k, Candidates_list *cl, kvec_t_u8_warp* k_flag, 
+void minimizers_qgen0(ha_abuf_t *ab, char* rs, int64_t rl, uint64_t mz_w, uint64_t mz_k, Candidates_list *cl, kvec_t_u8_warp* k_flag,
 void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ)
 {
+	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
 	// fprintf(stderr, "+[M::%s]\n", __func__);
-	uint64_t i, k, l, max_cnt = UINT32_MAX, min_cnt = 0; int n, j; ha_mz1_t *z; seed1_t *s; 
+	uint64_t i, k, l, max_cnt = UINT32_MAX, min_cnt = 0; int n, j; ha_mz1_t *z; seed1_t *s;
 	if(high_occ) {
 		max_cnt = (*high_occ);
 		if(max_cnt < 2) max_cnt = 2;
@@ -998,7 +1032,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		if(min_cnt < 2) min_cnt = 2;
 	}
 	clear_Candidates_list(cl); ab->mz.n = 0, ab->n_a = 0;
-	
+
 	// get the list of anchors
 	mz1_ha_sketch(rs, rl, mz_w, mz_k, 0, !(asm_opt.flag & HA_F_NO_HPC), &ab->mz, ha_flt_tab, asm_opt.mz_sample_dist, k_flag, dbg_ct, NULL, -1, asm_opt.dp_min_len, -1, sp, asm_opt.mz_rewin, 0, NULL);
 
@@ -1012,7 +1046,10 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 
 		ab->seed[i].a = ha_pt_get(ha_idx, ab->mz.a[i].x, &n);
 		ab->seed[i].n = n;
-		ab->n_a += n;
+		if (ha_idx_delta) {
+			ab->seed[i].ad = ha_pt_get(ha_idx_delta, ab->mz.a[i].x, &ab->seed[i].nd);
+		} else { ab->seed[i].ad = NULL; ab->seed[i].nd = 0; }
+		ab->n_a += n + ab->seed[i].nd;
 	}
 
 	if (ab->n_a > ab->m_a) {
@@ -1025,6 +1062,18 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		z = &ab->mz.a[i]; s = &ab->seed[i];
 		for (j = 0; j < s->n; ++j) {
 			const ha_idxpos_t *y = &s->a[j];
+			if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+			anchor1_t *an = &ab->a[k++];
+			uint8_t rev = z->rev == y->rev? 0 : 1;
+			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
+			an->self_off = z->pos;
+			///an->cnt: cnt<<8|span
+			an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+			an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
+			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
+		}
+		for (j = 0; j < s->nd; ++j) {
+			const ha_idxpos_t *y = &s->ad[j];
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
@@ -1035,6 +1084,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
 		}
 	}
+	ab->n_a = k;
 
 	// copy over to _cl_
 	if (ab->m_a >= (uint64_t)cl->size) {
@@ -1048,10 +1098,10 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		if (k == ab->n_a || ab->a[k].srt != ab->a[l].srt) {
 			if (k-l>1) radix_sort_ha_an3(ab->a+l, ab->a+k);
 			if((ab->a[l].srt>>33)!=tid) {
-				tid = ab->a[l].srt>>33; 
+				tid = ab->a[l].srt>>33;
 				tl = Get_READ_LENGTH((*rdb), tid);
 				// tl = rdb?Get_READ_LENGTH((*rdb), tid):udb->ug->u.a[tid].len;
-			} 
+			}
 			for (i = l; i < k; i++) {
 				p = &cl->list[i];
 				p->readID = ab->a[i].srt>>33;
@@ -1080,11 +1130,12 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 	cl->length = ab->n_a;
 }
 
-void minimizers_qgen0_amz(ha_abuf_t *ab, char* rs, int64_t rl, uint64_t mz_w, uint64_t mz_k, Candidates_list *cl, kvec_t_u8_warp* k_flag, 
+void minimizers_qgen0_amz(ha_abuf_t *ab, char* rs, int64_t rl, uint64_t mz_w, uint64_t mz_k, Candidates_list *cl, kvec_t_u8_warp* k_flag,
 void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ)
 {
+	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
 	// fprintf(stderr, "+[M::%s]\n", __func__);
-	uint64_t i, k, l, max_cnt = UINT32_MAX, min_cnt = 0; int n, j; ha_mz1_t *z; seed1_t *s; 
+	uint64_t i, k, l, max_cnt = UINT32_MAX, min_cnt = 0; int n, j; ha_mz1_t *z; seed1_t *s;
 	if(high_occ) {
 		max_cnt = (*high_occ);
 		if(max_cnt < 2) max_cnt = 2;
@@ -1094,7 +1145,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		if(min_cnt < 2) min_cnt = 2;
 	}
 	clear_Candidates_list(cl); ab->mz.n = 0, ab->n_a = 0;
-	
+
 	// get the list of anchors
 	mz1_ha_sketch(rs, rl, mz_w, mz_k, 0, !(asm_opt.flag & HA_F_NO_HPC), &ab->mz, ha_flt_tab, asm_opt.mz_sample_dist, k_flag, dbg_ct, NULL, -1, asm_opt.dp_min_len, -1, sp, asm_opt.mz_rewin, 0, NULL);
 
@@ -1108,7 +1159,10 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 
 		ab->seed[i].a = ha_pt_get(ha_idx, ab->mz.a[i].x, &n);
 		ab->seed[i].n = n;
-		ab->n_a += n;
+		if (ha_idx_delta) {
+			ab->seed[i].ad = ha_pt_get(ha_idx_delta, ab->mz.a[i].x, &ab->seed[i].nd);
+		} else { ab->seed[i].ad = NULL; ab->seed[i].nd = 0; }
+		ab->n_a += n + ab->seed[i].nd;
 	}
 
 	if (ab->n_a > ab->m_a) {
@@ -1121,6 +1175,18 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		z = &ab->mz.a[i]; s = &ab->seed[i];
 		for (j = 0; j < s->n; ++j) {
 			const ha_idxpos_t *y = &s->a[j];
+			if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+			anchor1_t *an = &ab->a[k++];
+			uint8_t rev = z->rev == y->rev? 0 : 1;
+			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
+			an->self_off = z->pos;
+			///an->cnt: cnt<<8|span
+			an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+			an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
+			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
+		}
+		for (j = 0; j < s->nd; ++j) {
+			const ha_idxpos_t *y = &s->ad[j];
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
@@ -1131,6 +1197,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
 		}
 	}
+	ab->n_a = k;
 
 	// copy over to _cl_
 	if (ab->m_a >= (uint64_t)cl->size) {
@@ -1144,10 +1211,10 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		if (k == ab->n_a || ab->a[k].srt != ab->a[l].srt) {
 			if (k-l>1) radix_sort_ha_an3(ab->a+l, ab->a+k);
 			if((ab->a[l].srt>>33)!=tid) {
-				tid = ab->a[l].srt>>33; 
+				tid = ab->a[l].srt>>33;
 				tl = Get_READ_LENGTH((*rdb), tid);
 				// tl = rdb?Get_READ_LENGTH((*rdb), tid):udb->ug->u.a[tid].len;
-			} 
+			}
 			for (i = l; i < k; i++) {
 				p = &cl->list[i];
 				p->readID = ab->a[i].srt>>33;
@@ -3091,10 +3158,11 @@ void hpc_ext_check(All_reads *rref, uint32_t id, int64_t s0, int64_t e0, int64_t
 
 }
 
-void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint64_t mz_w, uint64_t mz_k, ha_pt_t *ha_idx, All_reads *rref, overlap_region_alloc *olst, Candidates_list *cl, double bw_thres, 
-								 int apend_be, kvec_t_u8_warp* k_flag, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ, uint32_t gen_off, int64_t enable_mcopy, double mcopy_rate, uint32_t mcopy_khit_cut, 
+void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint64_t mz_w, uint64_t mz_k, ha_pt_t *ha_idx, All_reads *rref, overlap_region_alloc *olst, Candidates_list *cl, double bw_thres,
+								 int apend_be, kvec_t_u8_warp* k_flag, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ, uint32_t gen_off, int64_t enable_mcopy, double mcopy_rate, uint32_t mcopy_khit_cut,
 								 int64_t max_skip, int64_t max_iter, int64_t max_dis, int64_t quick_check, double chn_pen_gap, double chn_pen_skip, UC_Read *tu, asg64_v *oidx, asg16_v *scc)
 {
+	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
 	uint64_t i, k, l, m, max_cnt = UINT32_MAX, min_cnt = 0; int n, n0, j; ha_mz1_t *z; seed1_t *s; tiny_queue_t tq; memset(&tq, 0, sizeof(tiny_queue_t));
     if(high_occ) {
         max_cnt = (*high_occ);
@@ -3115,7 +3183,10 @@ void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint
     for (i = 0, ab->n_a = 0; i < ab->mz.n; ++i) {
         ab->seed[i].a = ha_pt_get(ha_idx, ab->mz.a[i].x, &n);
         ab->seed[i].n = n;
-        ab->n_a += n;
+        if (ha_idx_delta) {
+            ab->seed[i].ad = ha_pt_get(ha_idx_delta, ab->mz.a[i].x, &ab->seed[i].nd);
+        } else { ab->seed[i].ad = NULL; ab->seed[i].nd = 0; }
+        ab->n_a += n + ab->seed[i].nd;
     }
 
 	if (ab->n_a > ab->m_a) {
@@ -3130,13 +3201,14 @@ void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint
 		// uint64_t rpos, rspan;
 		// if(!recalu_minimizer0(rs + (z->pos+1-z->span), z->span, !(asm_opt.flag & HA_F_NO_HPC), mz_k, z->x, &tq, &rpos, &rspan)) {
 		// 	fprintf(stderr, "-1-[M::%s]\t%c\trg0::[%u,%u)\trid::%u\n", __func__, "+-"[z->rev], z->pos+1-z->span, z->pos+1, rid);
-		// } 
+		// }
 		// else {
 		// 	fprintf(stderr, "-0-[M::%s]\t%c\trg0::[%u,%u)\trid::%u\n", __func__, "+-"[z->rev], z->pos+1-z->span, z->pos+1, rid);
 		// }
 
         for (j = 0; j < s->n; ++j) {
             const ha_idxpos_t *y = &s->a[j];
+            if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
             anchor1_t *an = &ab->a[k++];
             uint8_t rev = z->rev == y->rev? 0 : 1;
 
@@ -3145,7 +3217,25 @@ void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint
 
             // an->self_off = z->pos;
 			an->self_off = i;
-			
+
+            ///an->cnt: cnt<<8|span
+            an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+            an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
+
+            // an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
+			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | y->pos;
+        }
+        for (j = 0; j < s->nd; ++j) {
+            const ha_idxpos_t *y = &s->ad[j];
+            anchor1_t *an = &ab->a[k++];
+            uint8_t rev = z->rev == y->rev? 0 : 1;
+
+            // an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
+			an->other_off = y->span;
+
+            // an->self_off = z->pos;
+			an->self_off = i;
+
             ///an->cnt: cnt<<8|span
             an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
             an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
@@ -3154,6 +3244,7 @@ void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | y->pos;
         }
     }
+	ab->n_a = k;
 
 	// copy over to _cl_
     if (ab->m_a >= (uint64_t)cl->size) {
@@ -3250,10 +3341,11 @@ void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint
 }
 
 
-void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint64_t mz_w, uint64_t mz_k, ha_pt_t *ha_idx, All_reads *rref, overlap_region_alloc *olst, Candidates_list *cl, double bw_thres, 
-								 int apend_be, kvec_t_u8_warp* k_flag, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ, uint32_t gen_off, int64_t enable_mcopy, double mcopy_rate, uint32_t mcopy_khit_cut, 
+void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint64_t mz_w, uint64_t mz_k, ha_pt_t *ha_idx, All_reads *rref, overlap_region_alloc *olst, Candidates_list *cl, double bw_thres,
+								 int apend_be, kvec_t_u8_warp* k_flag, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ, uint32_t gen_off, int64_t enable_mcopy, double mcopy_rate, uint32_t mcopy_khit_cut,
 								 int64_t max_skip, int64_t max_iter, int64_t max_dis, int64_t quick_check, double chn_pen_gap, double chn_pen_skip, UC_Read *tu, asg64_v *oidx, asg16_v *scc)
 {
+	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
 	uint64_t i, k, l, m, max_cnt = UINT32_MAX, min_cnt = 0; int n, n0, j; ha_mz1_t *z; seed1_t *s; tiny_queue_t tq; memset(&tq, 0, sizeof(tiny_queue_t));
     if(high_occ) {
         max_cnt = (*high_occ);
@@ -3274,7 +3366,10 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
     for (i = 0, ab->n_a = 0; i < ab->mz.n; ++i) {
         ab->seed[i].a = ha_pt_get(ha_idx, ab->mz.a[i].x, &n);
         ab->seed[i].n = n;
-        ab->n_a += n;
+        if (ha_idx_delta) {
+            ab->seed[i].ad = ha_pt_get(ha_idx_delta, ab->mz.a[i].x, &ab->seed[i].nd);
+        } else { ab->seed[i].ad = NULL; ab->seed[i].nd = 0; }
+        ab->n_a += n + ab->seed[i].nd;
     }
 
 	if (ab->n_a > ab->m_a) {
@@ -3289,13 +3384,14 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
 		// uint64_t rpos, rspan;
 		// if(!recalu_minimizer0(rs + (z->pos+1-z->span), z->span, !(asm_opt.flag & HA_F_NO_HPC), mz_k, z->x, &tq, &rpos, &rspan)) {
 		// 	fprintf(stderr, "-1-[M::%s]\t%c\trg0::[%u,%u)\trid::%u\n", __func__, "+-"[z->rev], z->pos+1-z->span, z->pos+1, rid);
-		// } 
+		// }
 		// else {
 		// 	fprintf(stderr, "-0-[M::%s]\t%c\trg0::[%u,%u)\trid::%u\n", __func__, "+-"[z->rev], z->pos+1-z->span, z->pos+1, rid);
 		// }
 
         for (j = 0; j < s->n; ++j) {
             const ha_idxpos_t *y = &s->a[j];
+            if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
             anchor1_t *an = &ab->a[k++];
             uint8_t rev = z->rev == y->rev? 0 : 1;
 
@@ -3304,7 +3400,25 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
 
             // an->self_off = z->pos;
 			an->self_off = i;
-			
+
+            ///an->cnt: cnt<<8|span
+            an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+            an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
+
+            // an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
+			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | y->pos;
+        }
+        for (j = 0; j < s->nd; ++j) {
+            const ha_idxpos_t *y = &s->ad[j];
+            anchor1_t *an = &ab->a[k++];
+            uint8_t rev = z->rev == y->rev? 0 : 1;
+
+            // an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
+			an->other_off = y->span;
+
+            // an->self_off = z->pos;
+			an->self_off = i;
+
             ///an->cnt: cnt<<8|span
             an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
             an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
@@ -3313,6 +3427,7 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | y->pos;
         }
     }
+	ab->n_a = k;
 
 	// copy over to _cl_
     if (ab->m_a >= (uint64_t)cl->size) {
@@ -3423,7 +3538,8 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
 
 void h_ec_lchain_re_gen_srt(ha_abuf_t *ab, ha_pt_t *ha_idx, overlap_region_alloc *olst, Candidates_list *cl)
 {
-	uint64_t i, k; int j, n; ha_mz1_t *z; seed1_t *s; 
+	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
+	uint64_t i, k; int j, n; ha_mz1_t *z; seed1_t *s;
     
     clear_Candidates_list(cl); ab->n_a = 0;
 
@@ -3436,7 +3552,10 @@ void h_ec_lchain_re_gen_srt(ha_abuf_t *ab, ha_pt_t *ha_idx, overlap_region_alloc
     for (i = 0, ab->n_a = 0; i < ab->mz.n; ++i) {
         ab->seed[i].a = ha_pt_get(ha_idx, ab->mz.a[i].x, &n);
         ab->seed[i].n = n;
-        ab->n_a += n;
+        if (ha_idx_delta) {
+            ab->seed[i].ad = ha_pt_get(ha_idx_delta, ab->mz.a[i].x, &ab->seed[i].nd);
+        } else { ab->seed[i].ad = NULL; ab->seed[i].nd = 0; }
+        ab->n_a += n + ab->seed[i].nd;
     }
 
 	if (ab->n_a > ab->m_a) {
@@ -3450,6 +3569,19 @@ void h_ec_lchain_re_gen_srt(ha_abuf_t *ab, ha_pt_t *ha_idx, overlap_region_alloc
 
         for (j = 0; j < s->n; ++j) {
             const ha_idxpos_t *y = &s->a[j];
+            if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+            anchor1_t *an = &ab->a[k++];
+            uint8_t rev = z->rev == y->rev? 0 : 1;
+
+			an->other_off = y->span;
+			an->self_off = i;
+            ///an->cnt: cnt<<8|span
+            an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+            an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
+			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | y->pos;
+        }
+        for (j = 0; j < s->nd; ++j) {
+            const ha_idxpos_t *y = &s->ad[j];
             anchor1_t *an = &ab->a[k++];
             uint8_t rev = z->rev == y->rev? 0 : 1;
 
@@ -3461,6 +3593,7 @@ void h_ec_lchain_re_gen_srt(ha_abuf_t *ab, ha_pt_t *ha_idx, overlap_region_alloc
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | y->pos;
         }
     }
+	ab->n_a = k;
 
 	// copy over to _cl_
     if (ab->m_a >= (uint64_t)cl->size) {

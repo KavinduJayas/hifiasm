@@ -976,7 +976,7 @@ void rescue_hp_reads(ha_ovec_buf_t **b)
     if (!(asm_opt.flag & HA_F_NO_KMER_FLT)) {
        ha_flt_tab_hp = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 1, 0);
     }
-    ha_idx_hp = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 1, &R_INF, &hom_cov, &het_cov);
+    ha_idx_hp = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 1, &R_INF, &hom_cov, &het_cov, 0);
 
 
     if (asm_opt.required_read_name)
@@ -1031,7 +1031,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     
     if(ha_idx) hom_cov = asm_opt.hom_cov;
 	if(ha_idx == NULL /*|| (round == 0 && asm_opt.continue_from_prev_state) */){
-        ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1 /*KJ:read from store set to 1 after initial round, (if verbose gfa; r starts with num of rounds)*/, 0, &R_INF, &hom_cov, &het_cov); // build the index
+        ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1, 0, &R_INF, &hom_cov, &het_cov, 0); // build the index
         asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
     }
 	///debug_adapter(&asm_opt, &R_INF);
@@ -1117,7 +1117,7 @@ int ha_ec_dbg(void)
 {
 	int hom_cov, het_cov;
 
-    ha_idx = ha_pt_gen(&asm_opt, 0, 0, 0, &R_INF, &hom_cov, &het_cov); // build the index
+    ha_idx = ha_pt_gen(&asm_opt, 0, 0, 0, &R_INF, &hom_cov, &het_cov, 0); // build the index
     asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
 	ha_opt_update_cov(&asm_opt, hom_cov);
 
@@ -1146,7 +1146,7 @@ void ha_overlap_and_correct(int round)
 	for (i = 0; i < asm_opt.thread_num; ++i)
 		b[i] = ha_ovec_init(0, (round == asm_opt.number_of_round - 1),0);
     if(ha_idx) hom_cov = asm_opt.hom_cov;
-	if(ha_idx == NULL) ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1, 0, &R_INF, &hom_cov, &het_cov); // build the index
+	if(ha_idx == NULL) ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1, 0, &R_INF, &hom_cov, &het_cov, 0); // build the index
 	///debug_adapter(&asm_opt, &R_INF);
     if (round == 0 && ha_flt_tab == 0) // then asm_opt.hom_cov hasn't been updated
 		ha_opt_update_cov(&asm_opt, hom_cov);
@@ -1213,7 +1213,7 @@ void ha_overlap_cal(int round, int read_from_store)
 	for (i = 0; i < asm_opt.thread_num; ++i)
 		b[i] = ha_ovec_init(0, (round == asm_opt.number_of_round - 1),0);
     if(ha_idx) hom_cov = asm_opt.hom_cov;
-	if(ha_idx == NULL) ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, ((round == 0)&&(read_from_store == 0))?0:1, 0, &R_INF, &hom_cov, &het_cov); // build the index
+	if(ha_idx == NULL) ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, ((round == 0)&&(read_from_store == 0))?0:1, 0, &R_INF, &hom_cov, &het_cov, 0); // build the index
 	///debug_adapter(&asm_opt, &R_INF);
     if (/**round == 0 &&**/ ha_flt_tab == 0) // then asm_opt.hom_cov hasn't been updated
 		ha_opt_update_cov(&asm_opt, hom_cov);
@@ -1961,7 +1961,7 @@ void hap_recalculate_peaks(char* output_file_name)
 
     load_All_reads(&R_INF, gfa_name);
 
-    ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 0, &R_INF, &hom_cov, &het_cov); // build the index
+    ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 0, &R_INF, &hom_cov, &het_cov, 0); // build the index
     asm_opt.hom_cov = hom_cov;
     asm_opt.het_cov = het_cov;
     ha_pt_destroy(ha_idx);
@@ -1983,7 +1983,7 @@ void ha_overlap_final(void)
 	CALLOC(b, asm_opt.thread_num);
 	for (i = 0; i < asm_opt.thread_num; ++i)
 		b[i] = ha_ovec_init(asm_opt.flag & HA_F_HIGH_HET, 1,0);///b[i] = ha_ovec_init(1, 1);
-	ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 0, &R_INF, &hom_cov, &het_cov); // build the index
+	ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 0, &R_INF, &hom_cov, &het_cov, 0); // build the index
     // if(asm_opt.flag & HA_F_HIGH_HET)
     // {
     //     kt_for(asm_opt.thread_num, worker_ov_final_high_het, b, R_INF.total_reads);
@@ -2010,15 +2010,29 @@ void ha_ec_ff(int renew_idx)
     if(ha_idx && renew_idx) {
         ha_pt_destroy(ha_idx); ha_idx = NULL;
     }
+    if(ha_idx_delta) { ha_pt_destroy(ha_idx_delta); ha_idx_delta = NULL; }
 
     if(!ha_idx) {
-        ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 0, &R_INF, &hom_cov, &het_cov); // build the index
-        asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
+        if (asm_opt.continue_from_prev_state) {
+            ha_idx = ha_pt_table_load(asm_opt.output_file_name);
+        }
+        if (ha_idx) {
+            // incremental update: mark dirty reads stale, build delta for new+dirty reads
+            ha_pt_mark_stale(ha_idx, &R_INF);
+            ha_idx_delta = ha_pt_gen_delta(&asm_opt, ha_flt_tab, &R_INF, &hom_cov, &het_cov);
+            asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
+            fprintf(stderr, "[M::%s] incremental index update: primary loaded, delta built.\n", __func__);
+        } else {
+            ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 0, &R_INF, &hom_cov, &het_cov, 0);
+            asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
+            ha_pt_table_save(ha_idx, asm_opt.output_file_name);
+        }
     }
 
     cal_ov_r(asm_opt.thread_num, R_INF.total_reads, renew_idx);
 
 	ha_pt_destroy(ha_idx); ha_idx = NULL;
+    if(ha_idx_delta) { ha_pt_destroy(ha_idx_delta); ha_idx_delta = NULL; }
 }
 
 static void worker_ov_utg(void *data, long i, int tid)

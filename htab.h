@@ -68,6 +68,7 @@ typedef struct ha_abufl_s ha_abufl_t;
 extern const unsigned char seq_nt4_table[256];
 extern void *ha_flt_tab;
 extern ha_pt_t *ha_idx;
+extern ha_pt_t *ha_idx_delta;
 extern void *ha_flt_tab_hp;
 extern ha_pt_t *ha_idx_hp;
 extern void *ha_ct_table;
@@ -80,12 +81,18 @@ void ha_ft_destroy(void *h);
 
 ha_pt_t *ha_pt_ul_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, ma_utg_v *us, int k, int w, int cutoff);
 ha_pt_t *ha_pt_ug_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, ma_utg_v *us, int is_HPC, int k, int w, int min_freq);
-ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_from_store, int is_hp_mode, All_reads *rs, int *hom_cov, int *het_cov);
+ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_from_store, int is_hp_mode, All_reads *rs, int *hom_cov, int *het_cov, int extra_flags);
 void ha_pt_destroy(ha_pt_t *h);
+void ha_pt_mark_stale(ha_pt_t *pt, All_reads *rs);
+ha_pt_t *ha_pt_gen_delta(const hifiasm_opt_t *asm_opt, const void *flt_tab, All_reads *rs, int *hom_cov, int *het_cov);
 const ha_idxpos_t *ha_pt_get(const ha_pt_t *h, uint64_t hash, int *n);
 const ha_idxposl_t *ha_ptl_get(const ha_pt_t *h, uint64_t hash, int *n);
 const int ha_pt_cnt(const ha_pt_t *h, uint64_t hash);
+// Returns the per-read staleness array (NULL if not tracked). Entry == 0xFF means stale.
+const uint8_t *ha_pt_mz_round(const ha_pt_t *pt);
 
+int ha_pt_table_save(const ha_pt_t *pt, const char *file_name);
+ha_pt_t *ha_pt_table_load(const char *file_name);
 int write_pt_index(void *flt_tab, ha_pt_t *ha_idx, All_reads* r, hifiasm_opt_t* opt, char* file_name);
 int load_pt_index(void **r_flt_tab, ha_pt_t **r_ha_idx, All_reads* r, hifiasm_opt_t* opt, char* file_name);
 int uidx_write(void *flt_tab, ha_pt_t *ha_idx, char* file_name, ma_ug_t *ug);
