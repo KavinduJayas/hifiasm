@@ -2055,6 +2055,29 @@ void ha_overlap_final(void)
     asm_opt.het_cov = het_cov;
 }
 
+static ma_hit_t_alloc *dup_paf(const ma_hit_t_alloc *src, uint64_t n)
+{
+    ma_hit_t_alloc *dst = (ma_hit_t_alloc*)malloc(sizeof(ma_hit_t_alloc) * n);
+    for (uint64_t i = 0; i < n; i++) {
+        dst[i] = src[i];
+        if (src[i].length > 0) {
+            dst[i].buffer = (ma_hit_t*)malloc(sizeof(ma_hit_t) * src[i].length);
+            memcpy(dst[i].buffer, src[i].buffer, sizeof(ma_hit_t) * src[i].length);
+            dst[i].size = src[i].length;
+        } else {
+            dst[i].buffer = NULL;
+            dst[i].size = 0;
+        }
+    }
+    return dst;
+}
+
+static void free_paf_copy(ma_hit_t_alloc *paf, uint64_t n)
+{
+    for (uint64_t i = 0; i < n; i++) free(paf[i].buffer);
+    free(paf);
+}
+
 void ha_ec_ff(int renew_idx)
 {
 	int hom_cov, het_cov;
@@ -2251,9 +2274,26 @@ int ha_assemble(void)
     if(ovlp_loaded == 2) ovlp_loaded = 0;
     ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
 
-    build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf,
-        R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round,
-        asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded || asm_opt.continue_from_prev_state);
+    if (asm_opt.keep_alive) {
+        // Keep R_INF.paf intact for subsequent keep-alive iterations: build_string_graph_without_clean
+        // modifies sources in-place (try_rescue_overlaps compacts/adds entries, clean_graph sets .del).
+        // Pass copies so the originals stay in pre-clean state.
+        ma_hit_t_alloc *paf_cpy = dup_paf(R_INF.paf, R_INF.total_reads);
+        ma_hit_t_alloc *rev_cpy = dup_paf(R_INF.reverse_paf, R_INF.total_reads);
+        build_string_graph_without_clean(asm_opt.min_overlap_coverage, paf_cpy, rev_cpy,
+            R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len,
+            asm_opt.clean_round, asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate,
+            asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0,
+            !ovlp_loaded || asm_opt.continue_from_prev_state);
+        free_paf_copy(paf_cpy, R_INF.total_reads);
+        free_paf_copy(rev_cpy, R_INF.total_reads);
+    } else {
+        build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf,
+            R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len,
+            asm_opt.clean_round, asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate,
+            asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0,
+            !ovlp_loaded || asm_opt.continue_from_prev_state);
+    }
     if (ec_write_started) pthread_join(ec_write_tid, NULL);
 
     if (asm_opt.keep_alive) {
@@ -2345,10 +2385,16 @@ int ha_assemble(void)
             ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
             sprintf(iter_output_file_name, "%s.iter%d", base_output_file_name, ka_iter);
             asm_opt.output_file_name = iter_output_file_name;
-            build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf,
-                R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len,
-                asm_opt.clean_round, asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate,
-                asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, 1);
+            {
+                ma_hit_t_alloc *paf_cpy = dup_paf(R_INF.paf, R_INF.total_reads);
+                ma_hit_t_alloc *rev_cpy = dup_paf(R_INF.reverse_paf, R_INF.total_reads);
+                build_string_graph_without_clean(asm_opt.min_overlap_coverage, paf_cpy, rev_cpy,
+                    R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len,
+                    asm_opt.clean_round, asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate,
+                    asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, 1);
+                free_paf_copy(paf_cpy, R_INF.total_reads);
+                free_paf_copy(rev_cpy, R_INF.total_reads);
+            }
             asm_opt.output_file_name = base_output_file_name;
 
             fprintf(stderr, "[M::%s] keep-alive: done iter %d, waiting for next filename (or EOF)\n",
