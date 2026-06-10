@@ -2384,6 +2384,8 @@ int ha_assemble(void)
 
             ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
             sprintf(iter_output_file_name, "%s.iter%d", base_output_file_name, ka_iter);
+            //KJ: has to join here since the output_file_name gets updated.
+            if (ka_write_started) { pthread_join(ka_write_tid, NULL); ka_write_started = 0; }
             asm_opt.output_file_name = iter_output_file_name;
             {
                 ma_hit_t_alloc *paf_cpy = dup_paf(R_INF.paf, R_INF.total_reads);
@@ -2400,7 +2402,6 @@ int ha_assemble(void)
             fprintf(stderr, "[M::%s] keep-alive: done iter %d, waiting for next filename (or EOF)\n",
                     __func__, ka_iter);
         }
-        if (ka_write_started) { pthread_join(ka_write_tid, NULL); ka_write_started = 0; }
         free(new_file_buf);
         free(prev_ec);
         free(iter_output_file_name);
