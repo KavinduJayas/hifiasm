@@ -1062,18 +1062,18 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
         // /*
         //KJ: write dirty array for inspection
     //    if(round == (asm_opt.number_of_round-1)){
-            char* dirty_name = (char*)malloc(strlen(asm_opt.output_file_name)+35);
-            sprintf(dirty_name, "%s.dirty_reads.log", asm_opt.output_file_name);
-            FILE* dirty_fp = fopen(dirty_name, "w");
-            free(dirty_name);
+            // char* dirty_name = (char*)malloc(strlen(asm_opt.output_file_name)+35);
+            // sprintf(dirty_name, "%s.dirty_reads.log", asm_opt.output_file_name);
+            // FILE* dirty_fp = fopen(dirty_name, "w");
+            // free(dirty_name);
 
-            for (uint64_t idx = 0; idx < R_INF.total_reads0; idx++) {
-                if (R_INF.dirty_reads[idx] & 0x3F) {
-                    fprintf(dirty_fp, "%lu\t%.*s\n", idx, (int)Get_NAME_LENGTH(R_INF, idx), Get_NAME(R_INF, idx));
-                }
-            }
+            // for (uint64_t idx = 0; idx < R_INF.total_reads0; idx++) {
+            //     if (R_INF.dirty_reads[idx] & 0x3F) {
+            //         fprintf(dirty_fp, "%lu\t%.*s\n", idx, (int)Get_NAME_LENGTH(R_INF, idx), Get_NAME(R_INF, idx));
+            //     }
+            // }
             // fprintf(dirty_fp, "%lu\t%.*s\n", 18834, (int)Get_NAME_LENGTH(R_INF, 18834), Get_NAME(R_INF, 18834));
-            fclose(dirty_fp);
+            // fclose(dirty_fp);
         // }
         // exit(0);
         // */
@@ -2160,8 +2160,13 @@ int ha_assemble(void)
         if((asm_opt.flag & HA_F_VERBOSE_GFA) /*KJ: TODO: test --> && !asm_opt.continue_from_prev_state*/) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
 
         R_INF.total_reads0 = R_INF.total_reads;
+        // In -j + --dbg-gfa mode, ha_ft_gen (the only path that calls reinit_All_reads)
+        // is skipped because ha_flt_tab was loaded from disk. Allocate dirty_reads here
+        // so ha_ec / ha_pt_mark_stale / HAF_INCREMENTAL don't crash on NULL.
+        if (asm_opt.continue_from_prev_state && R_INF.dirty_reads == NULL && R_INF.total_reads0 > 0)
+            R_INF.dirty_reads = (uint8_t*)calloc(R_INF.total_reads0, sizeof(uint8_t));
 		// construct hash table for high occurrence k-mers
-		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && (ha_flt_tab == NULL /*KJ: TODO: test --> || asm_opt.continue_from_prev_state*/)) 
+		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && (ha_flt_tab == NULL /*KJ: TODO: test --> || asm_opt.continue_from_prev_state*/))
         {
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
