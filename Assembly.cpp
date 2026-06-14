@@ -2176,6 +2176,10 @@ int ha_assemble(void)
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}
+        // ha_ft_gen loads new reads but does not allocate dirty_reads; ensure it covers
+        // the full read set (including newly loaded E1 reads) before ha_pt_mark_stale runs.
+        if (asm_opt.continue_from_prev_state && R_INF.dirty_reads == NULL && R_INF.total_reads > 0)
+            R_INF.dirty_reads = (uint8_t*)calloc(R_INF.total_reads, sizeof(uint8_t));
 		// error correction
 		assert(asm_opt.number_of_round > 0);
 		for (r = ha_idx?asm_opt.number_of_round-1:0; r < asm_opt.number_of_round; ++r) { //KJ:if verbose gfa: only one round of ec
