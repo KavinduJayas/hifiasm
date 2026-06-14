@@ -2166,14 +2166,13 @@ int ha_assemble(void)
         if((asm_opt.flag & HA_F_VERBOSE_GFA) /*KJ: TODO: test --> && !asm_opt.continue_from_prev_state*/) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
 
         R_INF.total_reads0 = R_INF.total_reads;
-        // In -j + --dbg-gfa mode, ha_ft_gen (the only path that calls reinit_All_reads)
-        // is skipped because ha_flt_tab was loaded from disk. Allocate dirty_reads here
-        // so ha_ec / ha_pt_mark_stale / HAF_INCREMENTAL don't crash on NULL.
-        if (asm_opt.continue_from_prev_state && R_INF.dirty_reads == NULL && R_INF.total_reads0 > 0)
-            R_INF.dirty_reads = (uint8_t*)calloc(R_INF.total_reads0, sizeof(uint8_t));
 		// construct hash table for high occurrence k-mers
-		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && (ha_flt_tab == NULL /*KJ: TODO: test --> || asm_opt.continue_from_prev_state*/))
+        // In -j + --dbg-gfa mode ha_flt_tab was loaded from disk, but we must still call
+        // ha_ft_gen so that new reads (E1) are loaded into R_INF via ha_count(WRITE_LEN).
+        // Free the stale filter table first; ha_idx (the expensive part) is kept.
+		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && (ha_flt_tab == NULL || asm_opt.continue_from_prev_state))
         {
+            if (ha_flt_tab) { ha_ft_destroy(ha_flt_tab); ha_flt_tab = NULL; }
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}
