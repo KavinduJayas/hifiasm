@@ -1376,6 +1376,13 @@ ha_pt_t *ha_pt_gen_delta(const hifiasm_opt_t *asm_opt, const void *flt_tab, All_
 	return ha_pt_gen(asm_opt, flt_tab, 1, 0, rs, hom_cov, het_cov, HAF_INCREMENTAL);
 }
 
+// Like ha_pt_gen_delta but with read_from_store=0 so ha_pt_gen writes sequences for new
+// reads in its first pass. Use when lengths are loaded (by ha_ft_gen) but sequences are not.
+ha_pt_t *ha_pt_gen_delta_load(const hifiasm_opt_t *asm_opt, const void *flt_tab, All_reads *rs, int *hom_cov, int *het_cov)
+{
+	return ha_pt_gen(asm_opt, flt_tab, 0, 0, rs, hom_cov, het_cov, HAF_INCREMENTAL);
+}
+
 int query_ct_index(void* ct_idx, uint64_t hash)
 {
 	ha_ct1_t *g = &(((ha_ct_t*)ct_idx)->h[hash & ((1ULL<<((ha_ct_t*)ct_idx)->pre) - 1)]);

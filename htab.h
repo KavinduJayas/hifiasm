@@ -85,6 +85,7 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 void ha_pt_destroy(ha_pt_t *h);
 void ha_pt_mark_stale(ha_pt_t *pt, All_reads *rs);
 ha_pt_t *ha_pt_gen_delta(const hifiasm_opt_t *asm_opt, const void *flt_tab, All_reads *rs, int *hom_cov, int *het_cov);
+ha_pt_t *ha_pt_gen_delta_load(const hifiasm_opt_t *asm_opt, const void *flt_tab, All_reads *rs, int *hom_cov, int *het_cov);
 const ha_idxpos_t *ha_pt_get(const ha_pt_t *h, uint64_t hash, int *n);
 const ha_idxposl_t *ha_ptl_get(const ha_pt_t *h, uint64_t hash, int *n);
 const int ha_pt_cnt(const ha_pt_t *h, uint64_t hash);
