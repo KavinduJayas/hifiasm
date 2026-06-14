@@ -1033,6 +1033,12 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 	if(ha_idx == NULL /*|| (round == 0 && asm_opt.continue_from_prev_state) */){
         ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1, 0, &R_INF, &hom_cov, &het_cov, 0); // build the index
         asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
+    } else if (asm_opt.continue_from_prev_state && ha_idx_delta == NULL) {
+        // Stale index loaded from disk (D0 reads only); build delta for new+dirty reads
+        // so cal_ec_r can correct E1 reads via the two-table lookup in anchor.cpp.
+        ha_pt_mark_stale(ha_idx, &R_INF);
+        ha_idx_delta = ha_pt_gen_delta(&asm_opt, ha_flt_tab, &R_INF, &hom_cov, &het_cov);
+        asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
     }
 	///debug_adapter(&asm_opt, &R_INF);
     if (round == 0 && ha_flt_tab == 0) // then asm_opt.hom_cov hasn't been updated
