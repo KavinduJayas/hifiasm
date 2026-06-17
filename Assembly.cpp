@@ -2018,29 +2018,15 @@ void ha_ec_ff(int renew_idx)
     if(ha_idx && renew_idx) {
         ha_pt_destroy(ha_idx); ha_idx = NULL;
     }
-    if(ha_idx_delta) { ha_pt_destroy(ha_idx_delta); ha_idx_delta = NULL; }
 
     if(!ha_idx) {
-        if (asm_opt.continue_from_prev_state) {
-            ha_idx = ha_pt_table_load(asm_opt.output_file_name);
-        }
-        if (ha_idx) {
-            // incremental update: mark dirty reads stale, build delta for new+dirty reads
-            ha_pt_mark_stale(ha_idx, &R_INF);
-            ha_idx_delta = ha_pt_gen_delta(&asm_opt, ha_flt_tab, &R_INF, &hom_cov, &het_cov);
-            asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
-            fprintf(stderr, "[M::%s] incremental index update: primary loaded, delta built.\n", __func__);
-        } else {
-            ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 0, &R_INF, &hom_cov, &het_cov, 0);
-            asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
-            ha_pt_table_save(ha_idx, asm_opt.output_file_name);
-        }
+        ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, 1, 0, &R_INF, &hom_cov, &het_cov, 0);
+        asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
     }
 
     cal_ov_r(asm_opt.thread_num, R_INF.total_reads, renew_idx);
 
 	ha_pt_destroy(ha_idx); ha_idx = NULL;
-    if(ha_idx_delta) { ha_pt_destroy(ha_idx_delta); ha_idx_delta = NULL; }
 }
 
 static void worker_ov_utg(void *data, long i, int tid)
