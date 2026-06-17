@@ -559,6 +559,11 @@ const uint8_t *ha_pt_mz_round(const ha_pt_t *pt)
 	return pt ? pt->read_mz_round : NULL;
 }
 
+uint64_t ha_pt_n_reads(const ha_pt_t *pt)
+{
+	return pt ? pt->n_reads : 0;
+}
+
 inline uint64_t flt_quals(char *sc_a, uint64_t sc_l, uint64_t sc_off, int64_t sc_cut)
 {
 	int64_t sc_min = sc_l * sc_cut, sc_tot; uint64_t k;
@@ -1480,10 +1485,11 @@ int ha_pt_table_save(const ha_pt_t *pt, const char *file_name)
 		fwrite(&g->n, sizeof(g->n), 1, fp);
 		fwrite(g->a, sizeof(ha_idxpos_t), g->n, fp);
 	}
-	fwrite(&pt->n_reads,  sizeof(pt->n_reads),  1, fp);
+	uint64_t saved_n_reads = (pt->read_mz_round && pt->n_reads > 0) ? pt->n_reads : 0;
+	fwrite(&saved_n_reads,  sizeof(saved_n_reads),  1, fp);
 	fwrite(&pt->mz_round, sizeof(pt->mz_round), 1, fp);
-	if (pt->read_mz_round && pt->n_reads > 0)
-		fwrite(pt->read_mz_round, 1, pt->n_reads, fp);
+	if (saved_n_reads > 0)
+		fwrite(pt->read_mz_round, 1, saved_n_reads, fp);
 	fclose(fp);
 	fprintf(stderr, "[M::%s] ff position table saved.\n", __func__);
 	return 1;
@@ -1500,27 +1506,34 @@ ha_pt_t *ha_pt_table_load(const char *file_name)
 	if (!fp) return NULL;
 	ha_pt_t *pt;
 	CALLOC(pt, 1);
-	fread(&pt->k,       sizeof(pt->k),       1, fp);
-	fread(&pt->pre,     sizeof(pt->pre),      1, fp);
-	fread(&pt->tot,     sizeof(pt->tot),      1, fp);
-	fread(&pt->tot_pos, sizeof(pt->tot_pos),  1, fp);
+#define PT_LOAD_CHECK(expr) do { if ((expr) != 1) goto load_err; } while(0)
+	PT_LOAD_CHECK(fread(&pt->k,       sizeof(pt->k),       1, fp));
+	PT_LOAD_CHECK(fread(&pt->pre,     sizeof(pt->pre),      1, fp));
+	PT_LOAD_CHECK(fread(&pt->tot,     sizeof(pt->tot),      1, fp));
+	PT_LOAD_CHECK(fread(&pt->tot_pos, sizeof(pt->tot_pos),  1, fp));
 	CALLOC(pt->h, 1<<pt->pre);
 	for (i = 0; i < 1<<pt->pre; ++i) {
 		g = &pt->h[i];
 		yak_pt_load(&g->h, fp);
-		fread(&g->n, sizeof(g->n), 1, fp);
+		PT_LOAD_CHECK(fread(&g->n, sizeof(g->n), 1, fp));
 		MALLOC(g->a, g->n);
-		fread(g->a, sizeof(ha_idxpos_t), g->n, fp);
+		PT_LOAD_CHECK(fread(g->a, sizeof(ha_idxpos_t), g->n, fp));
 	}
-	fread(&pt->n_reads,  sizeof(pt->n_reads),  1, fp);
-	fread(&pt->mz_round, sizeof(pt->mz_round), 1, fp);
+	PT_LOAD_CHECK(fread(&pt->n_reads,  sizeof(pt->n_reads),  1, fp));
+	PT_LOAD_CHECK(fread(&pt->mz_round, sizeof(pt->mz_round), 1, fp));
 	if (pt->n_reads > 0) {
 		MALLOC(pt->read_mz_round, pt->n_reads);
-		fread(pt->read_mz_round, 1, pt->n_reads, fp);
+		if (fread(pt->read_mz_round, 1, pt->n_reads, fp) != pt->n_reads) goto load_err;
 	}
+#undef PT_LOAD_CHECK
 	fclose(fp);
 	fprintf(stderr, "[M::%s] ff position table loaded.\n", __func__);
 	return pt;
+load_err:
+	fclose(fp);
+	ha_pt_destroy(pt);
+	fprintf(stderr, "[M::%s] ff position table load failed (truncated or corrupt).\n", __func__);
+	return NULL;
 }
 
 int write_pt_index(void *flt_tab, ha_pt_t *ha_idx, All_reads* r, hifiasm_opt_t* opt, char* file_name)

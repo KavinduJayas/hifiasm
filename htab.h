@@ -91,6 +91,8 @@ const ha_idxposl_t *ha_ptl_get(const ha_pt_t *h, uint64_t hash, int *n);
 const int ha_pt_cnt(const ha_pt_t *h, uint64_t hash);
 // Returns the per-read staleness array (NULL if not tracked). Entry == 0xFF means stale.
 const uint8_t *ha_pt_mz_round(const ha_pt_t *pt);
+// Returns the length of the staleness array (0 if not tracked).
+uint64_t ha_pt_n_reads(const ha_pt_t *pt);
 
 int ha_pt_table_save(const ha_pt_t *pt, const char *file_name);
 ha_pt_t *ha_pt_table_load(const char *file_name);

@@ -96,6 +96,7 @@ void ha_get_new_candidates(ha_abuf_t *ab, int64_t rid, UC_Read *ucr, overlap_reg
 						   kvec_t_u8_warp* k_flag, kvec_t_u64_warp* chain_idx, void *ha_flt_tab, ha_pt_t *ha_idx, overlap_region* f_cigar, kvec_t_u64_warp* dbg_ct, st_mt_t *sp)
 {
 	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
+	const uint64_t _ha_mz_rnd_n = ha_pt_n_reads(ha_idx);
 	uint32_t i, rlen;
 	uint64_t k, l;
 	uint32_t low_occ = asm_opt.hom_cov * HA_KMER_GOOD_RATIO;
@@ -138,7 +139,7 @@ void ha_get_new_candidates(ha_abuf_t *ab, int64_t rid, UC_Read *ucr, overlap_reg
 		int total_cnt = s->n + s->nd;
 		for (j = 0; j < s->n; ++j) {
 			const ha_idxpos_t *y = &s->a[j];
-			if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+			if (_ha_mz_rnd && y->rid < _ha_mz_rnd_n && _ha_mz_rnd[y->rid] == 0xFF) continue;
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
 			an->other_off = y->pos;
@@ -561,6 +562,7 @@ void ha_get_ug_candidates(ha_abuf_t *ab, int64_t rid, ma_utg_t *u, ma_utg_v *ua,
 kvec_t_u64_warp* chain_idx, void *ha_flt_tab, ha_pt_t *ha_idx, overlap_region* f_cigar, kvec_t_u64_warp* dbg_ct, double chain_match_rate)
 {
     const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
+	const uint64_t _ha_mz_rnd_n = ha_pt_n_reads(ha_idx);
     uint32_t i;
     uint64_t k, l;
 
@@ -598,7 +600,7 @@ kvec_t_u64_warp* chain_idx, void *ha_flt_tab, ha_pt_t *ha_idx, overlap_region* f
         seed1_t *s = &ab->seed[i];
         for (j = 0; j < s->n; ++j) {
             const ha_idxpos_t *y = &s->a[j];
-            if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+            if (_ha_mz_rnd && y->rid < _ha_mz_rnd_n && _ha_mz_rnd[y->rid] == 0xFF) continue;
             anchor1_t *an = &ab->a[k++];
             uint8_t rev = z->rev == y->rev? 0 : 1;
             an->other_off = y->pos;
@@ -1021,6 +1023,7 @@ void minimizers_qgen0(ha_abuf_t *ab, char* rs, int64_t rl, uint64_t mz_w, uint64
 void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ)
 {
 	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
+	const uint64_t _ha_mz_rnd_n = ha_pt_n_reads(ha_idx);
 	// fprintf(stderr, "+[M::%s]\n", __func__);
 	uint64_t i, k, l, max_cnt = UINT32_MAX, min_cnt = 0; int n, j; ha_mz1_t *z; seed1_t *s;
 	if(high_occ) {
@@ -1062,7 +1065,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		z = &ab->mz.a[i]; s = &ab->seed[i];
 		for (j = 0; j < s->n; ++j) {
 			const ha_idxpos_t *y = &s->a[j];
-			if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+			if (_ha_mz_rnd && y->rid < _ha_mz_rnd_n && _ha_mz_rnd[y->rid] == 0xFF) continue;
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
@@ -1134,6 +1137,7 @@ void minimizers_qgen0_amz(ha_abuf_t *ab, char* rs, int64_t rl, uint64_t mz_w, ui
 void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ)
 {
 	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
+	const uint64_t _ha_mz_rnd_n = ha_pt_n_reads(ha_idx);
 	// fprintf(stderr, "+[M::%s]\n", __func__);
 	uint64_t i, k, l, max_cnt = UINT32_MAX, min_cnt = 0; int n, j; ha_mz1_t *z; seed1_t *s;
 	if(high_occ) {
@@ -1175,7 +1179,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		z = &ab->mz.a[i]; s = &ab->seed[i];
 		for (j = 0; j < s->n; ++j) {
 			const ha_idxpos_t *y = &s->a[j];
-			if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+			if (_ha_mz_rnd && y->rid < _ha_mz_rnd_n && _ha_mz_rnd[y->rid] == 0xFF) continue;
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
@@ -3163,6 +3167,7 @@ void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint
 								 int64_t max_skip, int64_t max_iter, int64_t max_dis, int64_t quick_check, double chn_pen_gap, double chn_pen_skip, UC_Read *tu, asg64_v *oidx, asg16_v *scc)
 {
 	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
+	const uint64_t _ha_mz_rnd_n = ha_pt_n_reads(ha_idx);
 	uint64_t i, k, l, m, max_cnt = UINT32_MAX, min_cnt = 0; int n, n0, j; ha_mz1_t *z; seed1_t *s; tiny_queue_t tq; memset(&tq, 0, sizeof(tiny_queue_t));
     if(high_occ) {
         max_cnt = (*high_occ);
@@ -3208,7 +3213,7 @@ void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint
 
         for (j = 0; j < s->n; ++j) {
             const ha_idxpos_t *y = &s->a[j];
-            if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+            if (_ha_mz_rnd && y->rid < _ha_mz_rnd_n && _ha_mz_rnd[y->rid] == 0xFF) continue;
             anchor1_t *an = &ab->a[k++];
             uint8_t rev = z->rev == y->rev? 0 : 1;
 
@@ -3346,6 +3351,7 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
 								 int64_t max_skip, int64_t max_iter, int64_t max_dis, int64_t quick_check, double chn_pen_gap, double chn_pen_skip, UC_Read *tu, asg64_v *oidx, asg16_v *scc)
 {
 	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
+	const uint64_t _ha_mz_rnd_n = ha_pt_n_reads(ha_idx);
 	uint64_t i, k, l, m, max_cnt = UINT32_MAX, min_cnt = 0; int n, n0, j; ha_mz1_t *z; seed1_t *s; tiny_queue_t tq; memset(&tq, 0, sizeof(tiny_queue_t));
     if(high_occ) {
         max_cnt = (*high_occ);
@@ -3391,7 +3397,7 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
 
         for (j = 0; j < s->n; ++j) {
             const ha_idxpos_t *y = &s->a[j];
-            if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+            if (_ha_mz_rnd && y->rid < _ha_mz_rnd_n && _ha_mz_rnd[y->rid] == 0xFF) continue;
             anchor1_t *an = &ab->a[k++];
             uint8_t rev = z->rev == y->rev? 0 : 1;
 
@@ -3539,6 +3545,7 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
 void h_ec_lchain_re_gen_srt(ha_abuf_t *ab, ha_pt_t *ha_idx, overlap_region_alloc *olst, Candidates_list *cl)
 {
 	const uint8_t *_ha_mz_rnd = ha_pt_mz_round(ha_idx);
+	const uint64_t _ha_mz_rnd_n = ha_pt_n_reads(ha_idx);
 	uint64_t i, k; int j, n; ha_mz1_t *z; seed1_t *s;
     
     clear_Candidates_list(cl); ab->n_a = 0;
@@ -3569,7 +3576,7 @@ void h_ec_lchain_re_gen_srt(ha_abuf_t *ab, ha_pt_t *ha_idx, overlap_region_alloc
 
         for (j = 0; j < s->n; ++j) {
             const ha_idxpos_t *y = &s->a[j];
-            if (_ha_mz_rnd && _ha_mz_rnd[y->rid] == 0xFF) continue;
+            if (_ha_mz_rnd && y->rid < _ha_mz_rnd_n && _ha_mz_rnd[y->rid] == 0xFF) continue;
             anchor1_t *an = &ab->a[k++];
             uint8_t rev = z->rev == y->rev? 0 : 1;
 

@@ -2015,6 +2015,8 @@ void ha_ec_ff(int renew_idx)
 	int hom_cov, het_cov;
     ha_flt_tab_hp = ha_idx_hp = NULL;
 
+    ha_pt_destroy(ha_idx_delta); ha_idx_delta = NULL;
+
     if(ha_idx && renew_idx) {
         ha_pt_destroy(ha_idx); ha_idx = NULL;
     }
