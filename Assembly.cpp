@@ -2172,7 +2172,7 @@ int ha_assemble(void)
             R_INF.dirty_reads = (uint8_t*)calloc(R_INF.total_reads, sizeof(uint8_t));
 		// error correction
 		assert(asm_opt.number_of_round > 0);
-		for (r = ha_idx?asm_opt.number_of_round-1:0; r < asm_opt.number_of_round; ++r) { //KJ:if verbose gfa: only one round of ec
+		for (r = 0; r < asm_opt.number_of_round; ++r) { //KJ:if verbose gfa: only one round of ec
 			ha_opt_reset_to_round(&asm_opt, r); // this update asm_opt.roundID and a few other fields
             tot_b = tot_e = 0;
 			// ha_overlap_and_correct(r);
