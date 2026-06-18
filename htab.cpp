@@ -1000,6 +1000,10 @@ static ha_ct_t *yak_count(const yak_copt_t *opt, const char *fn, int flag, ha_pt
 	///for 0-th counting, read all reads into pl.rs_out
 	if (rs && (flag & (HAF_RS_WRITE_LEN|HAF_RS_WRITE_SEQ)))
 		pl.rs_out = rs;
+	// Incremental skip in workers checks rs_in->dirty_reads; set it even in write passes
+	// (stage 0 only reads from rs_in when HAF_RS_READ is also set, so file path is unaffected)
+	if ((flag & HAF_INCREMENTAL) && rs && !pl.rs_in)
+		pl.rs_in = rs;
 	///for 0-th counting, flt_tab = NULL
 	///for 1-th counting, flt_tab = NULL
 	pl.flt_tab = flt_tab;
