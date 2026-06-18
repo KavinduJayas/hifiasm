@@ -705,7 +705,7 @@ static void sf##_worker_for_insert(void *data, long i, int tid) /** callback for
 static void sf##_worker_for_mz(void *data, long i, int tid)\
 {\
 	sf##_st_data_t *s = (sf##_st_data_t*)data;\
-	if (s->p->flag & HAF_INCREMENTAL) {\
+	if ((s->p->flag & HAF_INCREMENTAL) && s->p->rs_in) {\
 		uint64_t rid = s->n_seq0 + i;\
 		if (rid < s->p->rs_in->total_reads0 && !(s->p->rs_in->dirty_reads[rid] & 0x3F)) {\
 			s->mz[i].n = 0; s->mz[i].m = 0; s->mz[i].a = NULL;\
