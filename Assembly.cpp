@@ -2178,7 +2178,7 @@ int ha_assemble(void)
             tot_b = tot_e = 0;
 			// ha_overlap_and_correct(r);
             R_INF.round=r;
-            ha_ec(r, asm_opt.number_of_pround, (r<asm_opt.number_of_round-1)?1:0 /*KJ:destroy index if last round*/, &tot_b, &tot_e);
+            ha_ec(r, asm_opt.number_of_pround, (r<asm_opt.number_of_round-1) && !asm_opt.continue_from_prev_state ?1:0 /*KJ:destroy index if last round*/, &tot_b, &tot_e);
 			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> corrected reads for round %d\n", __func__, yak_realtime(),
 					yak_cpu_usage(), yak_peakrss_in_gb(), r + 1);
             fprintf(stderr, "[M::%s] # bases: %lu; # corrected bases: %lu\n", __func__, tot_b, tot_e);
