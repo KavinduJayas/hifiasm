@@ -1096,7 +1096,8 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     if(des_idx) {
         ha_pt_destroy(ha_idx); ha_idx = NULL;
     }
-	
+
+    ha_pt_destroy(ha_idx_delta); ha_idx_delta= NULL;	
 
     if(het_cnt) {
         print_het_cnt_log(het_cnt); free(het_cnt); het_cnt = NULL;
