@@ -1034,9 +1034,9 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
         ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1, 0, &R_INF, &hom_cov, &het_cov, 0); // build the index
         asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
     } else if (asm_opt.continue_from_prev_state && ha_idx_delta == NULL) {
-        // Stale index loaded from disk (D0 reads only); build delta for new+dirty reads
-        // so cal_ec_r can correct E1 reads via the two-table lookup in anchor.cpp.
-        ha_pt_mark_stale(ha_idx, &R_INF);
+        // Index loaded from disk holds ALL prior-batch reads and is never stale: old reads
+        // are never re-corrected, so their positions stay valid. Build a delta covering only
+        // the new reads so cal_ec_r can correct them via the two-table lookup in anchor.cpp.
         if(round == 0){
             // ha_ft_gen loaded E1 read lengths but not sequences; use _load variant
             // (read_from_store=0) so sequences are written in the first pass.
@@ -2171,8 +2171,8 @@ int ha_assemble(void)
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}
-        // ha_ft_gen loads new reads but does not allocate dirty_reads; ensure it covers
-        // the full read set (including newly loaded E1 reads) before ha_pt_mark_stale runs.
+        // ha_ft_gen loads new reads but does not allocate dirty_reads; keep a zeroed array
+        // covering the full read set so downstream null-tolerant guards stay consistent.
         if (asm_opt.continue_from_prev_state && R_INF.dirty_reads == NULL && R_INF.total_reads > 0)
             R_INF.dirty_reads = (uint8_t*)calloc(R_INF.total_reads, sizeof(uint8_t));
 		// error correction
