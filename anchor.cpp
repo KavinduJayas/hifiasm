@@ -1018,6 +1018,31 @@ uint32_t *low_occ)
 	cl->length = ab->n_a;
 }
 
+// DEBUG: catch a minimizer index entry whose stored position exceeds the target read's
+// CURRENT length (the precondition for the y_pos_e>=yl uint32 underflow that corrupts f_cigar
+// and crashes y_start_offset). Reports which table the entry came from (primary vs delta),
+// whether the target is a new/dirty read, and whether the primary stale-mask covers it — so
+// the three candidate root causes (mask not applied / dirty not marked / delta pos-gen wrong)
+// are distinguishable from a single run. Rate-limited; checks the raw forward pos (the stored
+// pos is always a forward coordinate regardless of strand, so it must be < length).
+static inline void dbg_stale_pos(const char *fn, All_reads *rdb, const uint8_t *mz_rnd,
+                                 uint64_t mz_rnd_n, const ha_idxpos_t *y, int from_delta)
+{
+	if (!rdb) return;
+	int64_t yl = Get_READ_LENGTH((*rdb), y->rid);
+	if ((int64_t)y->pos < yl) return;
+	static int _wq = 0;
+	if (__atomic_fetch_add(&_wq, 1, __ATOMIC_RELAXED) >= 256) return;
+	int is_new = (y->rid >= (uint32_t)rdb->total_reads0);
+	int is_drt = (!is_new && rdb->dirty_reads) ? (rdb->dirty_reads[y->rid] & 0x3F) : 0;
+	int msk    = (mz_rnd && y->rid < mz_rnd_n) ? (int)mz_rnd[y->rid] : -1;
+	fprintf(stderr,
+		"[STALE-POS::%s %s] round=%d y_rid=%u pos=%u span=%u yl=%ld "
+		"y_new=%d y_dirty=%d mask=%d total_reads0=%lu\n",
+		fn, from_delta ? "DELTA" : "PRIMARY", (int)rdb->round, y->rid, y->pos, y->span, yl,
+		is_new, is_drt, msk, (unsigned long)rdb->total_reads0);
+}
+
 
 void minimizers_qgen0(ha_abuf_t *ab, char* rs, int64_t rl, uint64_t mz_w, uint64_t mz_k, Candidates_list *cl, kvec_t_u8_warp* k_flag,
 void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_mt_t *sp, uint32_t *high_occ, uint32_t *low_occ)
@@ -1065,6 +1090,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		z = &ab->mz.a[i]; s = &ab->seed[i];
 		for (j = 0; j < s->n; ++j) {
 			const ha_idxpos_t *y = &s->a[j];
+			dbg_stale_pos(__func__, rdb, _ha_mz_rnd, _ha_mz_rnd_n, y, 0);
 			if (_ha_mz_rnd && y->rid < _ha_mz_rnd_n && _ha_mz_rnd[y->rid] == 0xFF) continue;
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
@@ -1077,6 +1103,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		}
 		for (j = 0; j < s->nd; ++j) {
 			const ha_idxpos_t *y = &s->ad[j];
+			dbg_stale_pos(__func__, rdb, _ha_mz_rnd, _ha_mz_rnd_n, y, 1);
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
@@ -1179,6 +1206,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		z = &ab->mz.a[i]; s = &ab->seed[i];
 		for (j = 0; j < s->n; ++j) {
 			const ha_idxpos_t *y = &s->a[j];
+			dbg_stale_pos(__func__, rdb, _ha_mz_rnd, _ha_mz_rnd_n, y, 0);
 			if (_ha_mz_rnd && y->rid < _ha_mz_rnd_n && _ha_mz_rnd[y->rid] == 0xFF) continue;
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
@@ -1191,6 +1219,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 		}
 		for (j = 0; j < s->nd; ++j) {
 			const ha_idxpos_t *y = &s->ad[j];
+			dbg_stale_pos(__func__, rdb, _ha_mz_rnd, _ha_mz_rnd_n, y, 1);
 			anchor1_t *an = &ab->a[k++];
 			uint8_t rev = z->rev == y->rev? 0 : 1;
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;

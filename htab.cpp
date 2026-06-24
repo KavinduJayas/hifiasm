@@ -1374,10 +1374,30 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 void ha_pt_mark_stale(ha_pt_t *pt, All_reads *rs)
 {
 	uint64_t i;
-	if (!pt || !pt->read_mz_round) return;
-	for (i = 0; i < rs->total_reads0 && i < pt->n_reads; ++i)
-		if (rs->dirty_reads[i] & 0x3F)
-			pt->read_mz_round[i] = 0xFF;
+	if (!pt || !pt->read_mz_round) {
+		// DEBUG: if the primary has no mask array, EVERY dirty old read goes UNMASKED
+		// at lookup -> stale positions feed the chainer. This is candidate #1.
+		uint64_t ndirty = 0;
+		if (rs->dirty_reads)
+			for (i = 0; i < rs->total_reads0; ++i)
+				if (rs->dirty_reads[i] & 0x3F) ndirty++;
+		fprintf(stderr, "[M::%s] WARNING: pt=%p read_mz_round=%p n_reads=%lu -> NO MASK APPLIED "
+				"(total_reads0=%lu dirty=%lu)\n", __func__, (void*)pt,
+				pt ? (void*)pt->read_mz_round : NULL, pt ? (unsigned long)pt->n_reads : 0,
+				(unsigned long)rs->total_reads0, (unsigned long)ndirty);
+		return;
+	}
+	uint64_t marked = 0, dirty = 0, beyond = 0;
+	for (i = 0; i < rs->total_reads0; ++i) {
+		if (!(rs->dirty_reads[i] & 0x3F)) continue;
+		dirty++;
+		if (i < pt->n_reads) { pt->read_mz_round[i] = 0xFF; marked++; }
+		else beyond++; // dirty read id past the mask array -> CANNOT be masked
+	}
+	fprintf(stderr, "[M::%s] round=%d total_reads0=%lu n_reads=%lu dirty=%lu marked=%lu "
+			"beyond_mask=%lu\n", __func__, (int)rs->round, (unsigned long)rs->total_reads0,
+			(unsigned long)pt->n_reads, (unsigned long)dirty, (unsigned long)marked,
+			(unsigned long)beyond);
 }
 
 ha_pt_t *ha_pt_gen_delta(const hifiasm_opt_t *asm_opt, const void *flt_tab, All_reads *rs, int *hom_cov, int *het_cov)
