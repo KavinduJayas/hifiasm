@@ -1491,11 +1491,8 @@ int ha_pt_table_save(const ha_pt_t *pt, const char *file_name)
 		fwrite(&g->n, sizeof(g->n), 1, fp);
 		fwrite(g->a, sizeof(ha_idxpos_t), g->n, fp);
 	}
-	uint64_t saved_n_reads = (pt->read_mz_round && pt->n_reads > 0) ? pt->n_reads : 0;
-	fwrite(&saved_n_reads,  sizeof(saved_n_reads),  1, fp);
-	fwrite(&pt->mz_round, sizeof(pt->mz_round), 1, fp);
-	if (saved_n_reads > 0)
-		fwrite(pt->read_mz_round, 1, saved_n_reads, fp);
+	// NOTE: round-tracking fields (n_reads/mz_round/read_mz_round) are intentionally not
+	// serialized — they are vestigial (unused at lookup) and kept out of the on-disk format.
 	fclose(fp);
 	fprintf(stderr, "[M::%s] ff position table saved.\n", __func__);
 	return 1;
@@ -1525,12 +1522,8 @@ ha_pt_t *ha_pt_table_load(const char *file_name)
 		MALLOC(g->a, g->n);
 		PT_LOAD_CHECK(fread(g->a, sizeof(ha_idxpos_t), g->n, fp));
 	}
-	PT_LOAD_CHECK(fread(&pt->n_reads,  sizeof(pt->n_reads),  1, fp));
-	PT_LOAD_CHECK(fread(&pt->mz_round, sizeof(pt->mz_round), 1, fp));
-	if (pt->n_reads > 0) {
-		MALLOC(pt->read_mz_round, pt->n_reads);
-		if (fread(pt->read_mz_round, 1, pt->n_reads, fp) != pt->n_reads) goto load_err;
-	}
+	// NOTE: round-tracking fields (n_reads/mz_round/read_mz_round) are intentionally not
+	// deserialized — they stay 0/NULL (struct is CALLOC'd) and are unused at lookup.
 #undef PT_LOAD_CHECK
 	fclose(fp);
 	fprintf(stderr, "[M::%s] ff position table loaded.\n", __func__);
@@ -1577,10 +1570,8 @@ int write_pt_index(void *flt_tab, ha_pt_t *ha_idx, All_reads* r, hifiasm_opt_t* 
 			fwrite(&g->n, sizeof(g->n), 1, fp);
 			fwrite(g->a, sizeof(ha_idxpos_t), g->n, fp);
 		}
-		fwrite(&ha_idx->n_reads, sizeof(ha_idx->n_reads), 1, fp);
-		fwrite(&ha_idx->mz_round, sizeof(ha_idx->mz_round), 1, fp);
-		if (ha_idx->read_mz_round && ha_idx->n_reads > 0)
-			fwrite(ha_idx->read_mz_round, 1, ha_idx->n_reads, fp);
+		// NOTE: the round-tracking fields (n_reads/mz_round/read_mz_round) are intentionally
+		// NOT serialized here, to keep the .pt_flt index format backwards compatible.
 	}
 
 	fwrite(&opt->number_of_round, sizeof(opt->number_of_round), 1, fp);
@@ -1668,12 +1659,9 @@ int load_pt_index(void **r_flt_tab, ha_pt_t **r_ha_idx, All_reads *r, hifiasm_op
 
 			pos_time += yak_realtime() - pos_s_time;
 		}
-		f_flag += fread(&ha_idx->n_reads, sizeof(ha_idx->n_reads), 1, fp);
-		f_flag += fread(&ha_idx->mz_round, sizeof(ha_idx->mz_round), 1, fp);
-		if (ha_idx->n_reads > 0) {
-			MALLOC(ha_idx->read_mz_round, ha_idx->n_reads);
-			f_flag += fread(ha_idx->read_mz_round, 1, ha_idx->n_reads, fp);
-		}
+		// NOTE: the round-tracking fields (n_reads/mz_round/read_mz_round) are intentionally
+		// NOT deserialized here, to keep the .pt_flt index format backwards compatible.
+		// They stay 0/NULL (the struct is CALLOC'd) and are unused at k-mer lookup.
 		(*r_ha_idx) = ha_idx;
 
 		fprintf(stderr, "[M::%s::%.3f(index)/%.3f(pos)] ==> Loaded pos table\n", __func__, index_time, pos_time);
