@@ -1052,6 +1052,7 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     het_cnt = NULL;
     if(round == asm_opt.number_of_round-1 && asm_opt.is_dbg_het_cnt) CALLOC(het_cnt, R_INF.total_reads);
 
+    //if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
 
     // Output_corrected_fastq();
     cal_ec_r(asm_opt.thread_num, round, num_pround, R_INF.total_reads, (round == (asm_opt.number_of_round-1))?1:0, tot_b, tot_e);
@@ -2033,6 +2034,9 @@ void ha_ec_ff(int renew_idx)
 
     cal_ov_r(asm_opt.thread_num, R_INF.total_reads, renew_idx);
 
+    if(asm_opt.flag & HA_F_VERBOSE_GFA)
+        write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+    
 	ha_pt_destroy(ha_idx); ha_idx = NULL;
 }
 
