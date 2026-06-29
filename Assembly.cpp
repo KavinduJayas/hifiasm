@@ -1092,8 +1092,10 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
     //     cal_ec_r(asm_opt.thread_num, round, num_pround, R_INF.total_reads0, (round == (asm_opt.number_of_round-1))?1:0, tot_b, tot_e);
     // }
 
-    if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
-    // exit(1);    
+    // .pt_flt is now written from ha_ec_ff() (post-correction, matches .ec.bin), not here:
+    // the index at this point predates the final round's trim and would be stale on -j reload.
+    // if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+    // exit(1);
 
     // memset(R_INF.dirty_reads, 0, R_INF.total_reads0 * sizeof(uint8_t)); //KJ:reset for next round
     // if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
@@ -2033,6 +2035,14 @@ void ha_ec_ff(int renew_idx)
 
     cal_ov_r(asm_opt.thread_num, R_INF.total_reads, renew_idx);
 
+    // Persist the fully-corrected index here (not in ha_ec). ha_idx was just rebuilt from the
+    // post-correction read store, so its minimizer positions match the read lengths written to
+    // .ec.bin. The old write_pt_index() in ha_ec() saved a snapshot built BEFORE the final
+    // round's trim, leaving old reads' positions overhanging their current length on a later -j
+    // (continue) load -> uint32 underflow in push_ovlp_chain_qgen -> y_start_offset crash.
+    if (asm_opt.flag & HA_F_VERBOSE_GFA)
+        write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+
 	ha_pt_destroy(ha_idx); ha_idx = NULL;
 }
 
@@ -2175,6 +2185,20 @@ int ha_assemble(void)
         // the full read set (including newly loaded E1 reads) before ha_pt_mark_stale runs.
         if (asm_opt.continue_from_prev_state && R_INF.dirty_reads == NULL && R_INF.total_reads > 0)
             R_INF.dirty_reads = (uint8_t*)calloc(R_INF.total_reads, sizeof(uint8_t));
+        // load_all_data_from_disk sized paf/reverse_paf to the prior-batch count
+        // (total_reads0). The new (E1) reads appended by ha_ft_gen extend total_reads, so grow
+        // both arrays and initialise the new entries — otherwise worker_ov writes past the end
+        // and destory_All_reads frees garbage buffers at paf[total_reads0..] (SIGSEGV).
+        if (asm_opt.continue_from_prev_state && R_INF.paf && R_INF.reverse_paf &&
+            R_INF.total_reads > R_INF.total_reads0) {
+            uint64_t _i;
+            REALLOC(R_INF.paf, R_INF.total_reads);
+            REALLOC(R_INF.reverse_paf, R_INF.total_reads);
+            for (_i = R_INF.total_reads0; _i < R_INF.total_reads; ++_i) {
+                init_ma_hit_t_alloc(&R_INF.paf[_i]);
+                init_ma_hit_t_alloc(&R_INF.reverse_paf[_i]);
+            }
+        }
 		// error correction
 		assert(asm_opt.number_of_round > 0);
 		for (r = 0; r < asm_opt.number_of_round; ++r) { //KJ:if verbose gfa: only one round of ec

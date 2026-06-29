@@ -23620,7 +23620,11 @@ int load_all_data_from_disk(ma_hit_t_alloc **sources, ma_hit_t_alloc **reverse_s
         }
     }
 
-    if((asm_opt.flag & HA_F_VERBOSE_GFA) && load_debug_graph(NULL, NULL, NULL, output_file_name, NULL, NULL, NULL))
+    // In -j (continue) mode always rebuild from the full read set; never reload the prior-batch
+    // debug graph (it covers only total_reads0 reads and would drop the new batch). Fall through
+    // to load_ma_hit_ts so paf/reverse_paf are loaded for the prior reads, then grown for new ones.
+    if((asm_opt.flag & HA_F_VERBOSE_GFA) && !asm_opt.continue_from_prev_state &&
+       load_debug_graph(NULL, NULL, NULL, output_file_name, NULL, NULL, NULL))
     {
         (*sources) = NULL;
         (*reverse_sources) = NULL;
@@ -39705,7 +39709,9 @@ long long bubble_dist, int read_graph, int write)
     init_aux_table();
     ///actually min_thres = asm_opt.max_short_tip + 1 there are asm_opt.max_short_tip reads
     min_thres = asm_opt.max_short_tip + 1;
-    if (asm_opt.flag & HA_F_VERBOSE_GFA)
+    // -j (continue) mode: build the graph from scratch over the full read set; do NOT reload the
+    // prior-batch debug graph (it omits the new reads and is sized to total_reads0).
+    if ((asm_opt.flag & HA_F_VERBOSE_GFA) && !asm_opt.continue_from_prev_state)
     {
         if(load_debug_graph(/**NULL**/&sg, &sources, /**NULL**/&coverage_cut, output_file_name, &reverse_sources, &ruIndex, &UL_INF))
         {

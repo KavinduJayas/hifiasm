@@ -1677,9 +1677,18 @@ int load_pt_index(void **r_flt_tab, ha_pt_t **r_ha_idx, All_reads *r, hifiasm_op
 
 			pos_time += yak_realtime() - pos_s_time;
 		}
-		// NOTE: the round-tracking fields (n_reads/mz_round/read_mz_round) are intentionally
-		// NOT deserialized here, to keep the .pt_flt index format backwards compatible.
-		// They stay 0/NULL (the struct is CALLOC'd) and are unused at k-mer lookup.
+		// The round-tracking VALUES are not serialized (kept out of the .pt_flt format for
+		// backwards compatibility), but the read_mz_round ARRAY must be allocated here so the
+		// staleness mask works on a loaded index: in -j (continue) mode, dirty old reads are
+		// re-corrected (kt_for_dirty) and trimmed, so their loaded positions go stale.
+		// ha_pt_mark_stale() flags those reads 0xFF each EC round and the k-mer lookup skips
+		// them (their corrected positions come from ha_idx_delta, which covers dirty reads).
+		// All loaded reads start non-stale (CALLOC -> round 0); only dirty reads are masked.
+		if (r && r->total_reads > 0) {
+			ha_idx->n_reads = r->total_reads;
+			ha_idx->mz_round = 0;
+			CALLOC(ha_idx->read_mz_round, ha_idx->n_reads);
+		}
 		(*r_ha_idx) = ha_idx;
 
 		fprintf(stderr, "[M::%s::%.3f(index)/%.3f(pos)] ==> Loaded pos table\n", __func__, index_time, pos_time);
