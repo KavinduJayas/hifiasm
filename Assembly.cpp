@@ -2186,7 +2186,19 @@ int ha_assemble(void)
             exit(EXIT_FAILURE);
         }
         ha_flt_tab = ha_idx = NULL;
-        if((asm_opt.flag & HA_F_VERBOSE_GFA) /*KJ: TODO: test --> && !asm_opt.continue_from_prev_state*/) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
+        if((asm_opt.flag & HA_F_VERBOSE_GFA) /*KJ: TODO: test --> && !asm_opt.continue_from_prev_state*/) {
+            // --dbg-gfa is a TIMING CONTROL: pay the I/O cost of loading the pt/ct bins, then
+            // discard them so error correction runs identically to a normal (no --dbg-gfa) run.
+            // The loaded tables are stale w.r.t. the corrected reads (.pt_flt is one round ahead
+            // of .ec.bin), so using them changes the logic and crashes y_start_offset. Freeing
+            // them keeps ha_idx/ha_flt_tab NULL, so the index is rebuilt fresh below and all
+            // rounds run; the bins are re-written naturally (ha_ft_gen -> ct, ha_ec -> pt).
+            load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+            load_ct_index(&ha_ct_table, asm_opt.output_file_name);
+            ha_pt_destroy(ha_idx); ha_idx = NULL;
+            ha_ft_destroy(ha_flt_tab); ha_flt_tab = NULL;
+            ha_ct_index_destroy(ha_ct_table); ha_ct_table = NULL;
+        }
 
         R_INF.total_reads0 = R_INF.total_reads;
 		// construct hash table for high occurrence k-mers

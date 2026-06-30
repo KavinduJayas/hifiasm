@@ -1120,6 +1120,12 @@ void ha_ft_destroy(void *h)
 	if (h) yak_ft_destroy((yak_ft_t*)h);
 }
 
+// Public wrapper to free a count table loaded via load_ct_index (ha_ct_destroy is static).
+void ha_ct_index_destroy(void *h)
+{
+	if (h) ha_ct_destroy((ha_ct_t*)h);
+}
+
 
 void debug_ct_index(void* q_ct_idx, void* r_ct_idx)
 {

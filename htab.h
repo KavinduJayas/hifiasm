@@ -77,6 +77,7 @@ void *ha_ft_ug_gen(const hifiasm_opt_t *asm_opt, ma_utg_v *us, int is_HPC, int k
 void *ha_ft_gen(const hifiasm_opt_t *asm_opt, All_reads *rs, int *hom_cov, int is_hp_mode, int read_from_store);
 int32_t ha_ft_cnt(const void *hh, uint64_t y);
 void ha_ft_destroy(void *h);
+void ha_ct_index_destroy(void *h);
 
 ha_pt_t *ha_pt_ul_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, ma_utg_v *us, int k, int w, int cutoff);
 ha_pt_t *ha_pt_ug_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, ma_utg_v *us, int is_HPC, int k, int w, int min_freq);
