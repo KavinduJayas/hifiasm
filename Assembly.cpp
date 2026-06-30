@@ -952,6 +952,7 @@ static void *output_corrected_thread(void *arg) {
     if(asm_opt.is_sc) Output_corrected_fastq();
     else Output_corrected_reads();
     return NULL;
+}
 static void Output_corrected_reads_n(int n)
 {
     long long i;
@@ -2193,8 +2194,22 @@ int ha_assemble(void)
         {
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
-		}
-		// error correction
+		}       
+        // load_all_data_from_disk sized paf/reverse_paf to the prior-batch count
+        // (total_reads0). The new (E1) reads appended by ha_ft_gen extend total_reads, so grow
+        // both arrays and initialise the new entries — otherwise worker_ov writes past the end
+        // and destory_All_reads frees garbage buffers at paf[total_reads0..] (SIGSEGV).
+        if (asm_opt.continue_from_prev_state && R_INF.paf && R_INF.reverse_paf &&
+            R_INF.total_reads > R_INF.total_reads0) {
+            uint64_t _i;
+            REALLOC(R_INF.paf, R_INF.total_reads);
+            REALLOC(R_INF.reverse_paf, R_INF.total_reads);
+            for (_i = R_INF.total_reads0; _i < R_INF.total_reads; ++_i) {
+                init_ma_hit_t_alloc(&R_INF.paf[_i]);
+                init_ma_hit_t_alloc(&R_INF.reverse_paf[_i]);
+            }
+        }
+        // error correction
 		assert(asm_opt.number_of_round > 0);
 		for (r = ha_idx?asm_opt.number_of_round-1:0; r < asm_opt.number_of_round; ++r) { //KJ:if verbose gfa: only one round of ec
 			ha_opt_reset_to_round(&asm_opt, r); // this update asm_opt.roundID and a few other fields

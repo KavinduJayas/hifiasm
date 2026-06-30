@@ -23620,7 +23620,7 @@ int load_all_data_from_disk(ma_hit_t_alloc **sources, ma_hit_t_alloc **reverse_s
         }
     }
 
-    if((asm_opt.flag & HA_F_VERBOSE_GFA) && load_debug_graph(NULL, NULL, NULL, output_file_name, NULL, NULL, NULL))
+    if((asm_opt.flag & HA_F_VERBOSE_GFA) && !asm_opt.continue_from_prev_state && load_debug_graph(NULL, NULL, NULL, output_file_name, NULL, NULL, NULL))
     {
         (*sources) = NULL;
         (*reverse_sources) = NULL;
@@ -39705,7 +39705,7 @@ long long bubble_dist, int read_graph, int write)
     init_aux_table();
     ///actually min_thres = asm_opt.max_short_tip + 1 there are asm_opt.max_short_tip reads
     min_thres = asm_opt.max_short_tip + 1;
-    if (asm_opt.flag & HA_F_VERBOSE_GFA)
+    if (asm_opt.flag & HA_F_VERBOSE_GFA && !asm_opt.continue_from_prev_state)
     {
         if(load_debug_graph(/**NULL**/&sg, &sources, /**NULL**/&coverage_cut, output_file_name, &reverse_sources, &ruIndex, &UL_INF))
         {
