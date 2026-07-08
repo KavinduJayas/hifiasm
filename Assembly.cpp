@@ -1037,14 +1037,16 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
         // Index loaded from disk holds ALL prior-batch reads and is never stale: old reads
         // are never re-corrected, so their positions stay valid. Build a delta covering only
         // the new reads so cal_ec_r can correct them via the two-table lookup in anchor.cpp.
+        // Pass NULL for hom_cov/het_cov: the delta counts only the new-read batch, so its
+        // peak_hom/peak_het are meaningless. The full-set coverage was already established by
+        // ha_ft_gen/ha_opt_update_cov; do NOT overwrite asm_opt with the subset estimate.
         if(round == 0){
             // ha_ft_gen loaded E1 read lengths but not sequences; use _load variant
             // (read_from_store=0) so sequences are written in the first pass.
-            ha_idx_delta = ha_pt_gen_delta_load(&asm_opt, ha_flt_tab, &R_INF, &hom_cov, &het_cov);
+            ha_idx_delta = ha_pt_gen_delta_load(&asm_opt, ha_flt_tab, &R_INF, NULL, NULL);
         }else{
-            ha_idx_delta = ha_pt_gen_delta(&asm_opt, ha_flt_tab, &R_INF, &hom_cov, &het_cov);
+            ha_idx_delta = ha_pt_gen_delta(&asm_opt, ha_flt_tab, &R_INF, NULL, NULL);
         }
-            asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
     }
 	///debug_adapter(&asm_opt, &R_INF);
     if (round == 0 && ha_flt_tab == 0) // then asm_opt.hom_cov hasn't been updated
