@@ -1338,17 +1338,22 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 	if (het_cov) *het_cov = peak_het;
 	if (peak_hom > 0) fprintf(stderr, "[M::%s] peak_hom: %d; peak_het: %d\n", __func__, peak_hom, peak_het);
 	///here ha_ct_shrink is mostly used to remove k-mer appearing only 1 time
+	// For the incremental delta build the count table covers only the new-read batch, so a
+	// k-mer shared with an old (primary) read appears just once here even though it occurs
+	// >=2x globally. Dropping "singletons" would delete exactly the new<->old anchors we need,
+	// so keep everything (min_ct = 1) on the delta path.
+	int min_ct = (extra_flags & HAF_INCREMENTAL) ? 1 : 2;
 	if (flt_tab == 0) {
 		int cutoff = (int)(peak_hom * asm_opt->high_factor);
 		if (cutoff > YAK_MAX_COUNT - 1) cutoff = YAK_MAX_COUNT - 1;
 		if((extra_flag1 & HAF_SKIP_READ) && (extra_flag2 & HAF_SKIP_READ)) cutoff = YAK_MAX_COUNT - 1;
-		ha_ct_shrink(ct, 2, cutoff, asm_opt->thread_num);
-		for (i = 2, tot_cnt = 0; i <= cutoff; ++i) tot_cnt += cnt[i] * i;
+		ha_ct_shrink(ct, min_ct, cutoff, asm_opt->thread_num);
+		for (i = min_ct, tot_cnt = 0; i <= cutoff; ++i) tot_cnt += cnt[i] * i;
 	} else {
 		///Note: here is just to remove minimizer appearing YAK_MAX_COUNT times
 		///minimizer with YAK_MAX_COUNT occ may apper > YAK_MAX_COUNT times, so it may lead to overflow at ha_pt_gen
-		ha_ct_shrink(ct, 2, YAK_MAX_COUNT - 1, asm_opt->thread_num);
-		for (i = 2, tot_cnt = 0; i <= YAK_MAX_COUNT - 1; ++i) tot_cnt += cnt[i] * i;
+		ha_ct_shrink(ct, min_ct, YAK_MAX_COUNT - 1, asm_opt->thread_num);
+		for (i = min_ct, tot_cnt = 0; i <= YAK_MAX_COUNT - 1; ++i) tot_cnt += cnt[i] * i;
 	}
 	if(!(asm_opt->flag & HA_F_FAST))
 	{
