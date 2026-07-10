@@ -6580,7 +6580,7 @@ void ha_print_ovlp_stat_0(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
         kt_for(n_thre, worker_hap_dc_ec_gen_new_idx, b, n_a);///debug_for_fix
     }
 
-    remove_invalid_overlaps();
+    // remove_invalid_overlaps();
     // kt_for(n_thre, worker_hap_dc_ec_gen_new_idx, b, n_a);///debug_for_fix
 
     for (k = 0; k < n_thre; ++k) {
