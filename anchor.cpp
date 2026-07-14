@@ -1062,7 +1062,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
 			an->self_off = z->pos;
 			///an->cnt: cnt<<8|span
-			an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+			an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
 			an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
 		}
@@ -1073,7 +1073,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
 			an->self_off = z->pos;
 			///an->cnt: cnt<<8|span
-			an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+			an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
 			an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
 		}
@@ -1173,7 +1173,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
 			an->self_off = z->pos;
 			///an->cnt: cnt<<8|span
-			an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+			an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
 			an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
 		}
@@ -1184,7 +1184,7 @@ void *ha_flt_tab, ha_pt_t *ha_idx, All_reads* rdb, kvec_t_u64_warp* dbg_ct, st_m
 			an->other_off = rev?((uint32_t)-1)-1-(y->pos+1-y->span):y->pos;
 			an->self_off = z->pos;
 			///an->cnt: cnt<<8|span
-			an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+			an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
 			an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
 		}
@@ -3209,7 +3209,7 @@ void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint
 			an->self_off = i;
 
             ///an->cnt: cnt<<8|span
-            an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+            an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
             an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 
             // an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
@@ -3227,7 +3227,7 @@ void h_ec_lchain_re_gen(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uint
 			an->self_off = i;
 
             ///an->cnt: cnt<<8|span
-            an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+            an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
             an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 
             // an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
@@ -3390,7 +3390,7 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
 			an->self_off = i;
 
             ///an->cnt: cnt<<8|span
-            an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+            an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
             an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 
             // an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
@@ -3408,7 +3408,7 @@ void h_ec_lchain_re_gen3(ha_abuf_t *ab, uint32_t rid, char* rs, uint64_t rl, uin
 			an->self_off = i;
 
             ///an->cnt: cnt<<8|span
-            an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+            an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
             an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 
             // an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | an->self_off;
@@ -3562,7 +3562,7 @@ void h_ec_lchain_re_gen_srt(ha_abuf_t *ab, ha_pt_t *ha_idx, overlap_region_alloc
 			an->other_off = y->span;
 			an->self_off = i;
             ///an->cnt: cnt<<8|span
-            an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+            an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
             an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | y->pos;
         }
@@ -3574,7 +3574,7 @@ void h_ec_lchain_re_gen_srt(ha_abuf_t *ab, ha_pt_t *ha_idx, overlap_region_alloc
 			an->other_off = y->span;
 			an->self_off = i;
             ///an->cnt: cnt<<8|span
-            an->cnt = s->n; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
+            an->cnt = s->n + s->nd; if(an->cnt > ((uint32_t)(0xffffffu))) an->cnt = 0xffffffu;
             an->cnt <<= 8; an->cnt |= ((z->span <= ((uint32_t)(0xffu)))?z->span:((uint32_t)(0xffu)));
 			an->srt = (uint64_t)y->rid<<33 | (uint64_t)rev<<32 | y->pos;
         }
