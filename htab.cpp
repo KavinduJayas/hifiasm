@@ -1342,7 +1342,17 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 	// k-mer shared with an old (primary) read appears just once here even though it occurs
 	// >=2x globally. Dropping "singletons" would delete exactly the new<->old anchors we need,
 	// so keep everything (min_ct = 1) on the delta path.
-	int min_ct = (extra_flags & HAF_INCREMENTAL) ? 1 : 2;
+	//
+	// The same reasoning extends to the full (primary) index in the streaming/realtime
+	// workflow: that index is written to disk (write_pt_index, gated on HA_F_VERBOSE_GFA) and
+	// reloaded as the primary table by later batches. A k-mer that is a singleton in this
+	// batch but gains a match from a future batch's new reads must keep its position in the
+	// reloaded index, otherwise the new<->old anchor is lost. Keeping min_ct=1 here is
+	// result-neutral within the current batch: a true singleton lives in a single read, so at
+	// lookup it only produces a self-anchor, which is filtered. It only costs extra index
+	// memory. So keep singletons whenever the delta path is used OR the index will be
+	// persisted for incremental reuse (HA_F_VERBOSE_GFA marks those streaming runs).
+	int min_ct = ((extra_flags & HAF_INCREMENTAL) || (asm_opt->flag & HA_F_VERBOSE_GFA)) ? 1 : 2;
 	if (flt_tab == 0) {
 		int cutoff = (int)(peak_hom * asm_opt->high_factor);
 		if (cutoff > YAK_MAX_COUNT - 1) cutoff = YAK_MAX_COUNT - 1;
