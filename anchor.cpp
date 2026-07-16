@@ -3692,6 +3692,12 @@ uint64_t get_mz1(const char *str, int len, int w, int k, uint32_t rid, int is_hp
 		for (i = 0; i < ab->mz.n; ++i) {
 			ab->seed[i].a = NULL;
 			ab->seed[i].n = ha_pt_cnt(ha_idx, ab->mz.a[i].x);
+			// Two-table (primary + delta) occurrence count: seed[i].n feeds the high/low-occ
+			// weighting in lchain_qgen_mcopy_fast_re0, so it must reflect the FULL count a
+			// dev-style single-index build would report. Without adding the delta, a k-mer
+			// shared between an old (primary) and a new (delta) read is undercounted, exactly
+			// like the ha_pt_get anchor path. No-op when no delta table is active.
+			if (ha_idx_delta) ab->seed[i].n += ha_pt_cnt(ha_idx_delta, ab->mz.a[i].x);
 		}
 	}
 
