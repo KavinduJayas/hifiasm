@@ -81,6 +81,7 @@ static ko_longopt_t long_options[] = {
     { "ul-m",     ko_required_argument, 363},
     { "rl-cut",     ko_required_argument, 364},
     { "sc-cut",     ko_required_argument, 365},
+    { "pt-save-high-factor", ko_required_argument, 366},
     // { "path-round",     ko_required_argument, 348},
 	{ 0, 0, 0 }
 };
@@ -113,6 +114,9 @@ void Print_H(hifiasm_opt_t* asm_opt)
     fprintf(stderr, "    -z INT       length of adapters that should be removed [%d]\n", asm_opt->adapterLen);
     fprintf(stderr, "    --max-kocc   INT\n");
     fprintf(stderr, "                 employ k-mers occurring <INT times to rescue repetitive overlaps [%d]\n", asm_opt->max_kmer_cnt);
+    fprintf(stderr, "    --pt-save-high-factor FLOAT\n");
+    fprintf(stderr, "                 streaming (--dbg-gfa): persist the reload index with this (more\n");
+    fprintf(stderr, "                 forgiving) high-occ cutoff instead of -D; 0 disables [%.1f]\n", asm_opt->pt_save_high_factor);
     fprintf(stderr, "    --hg-size    INT(k, m or g)\n");
     fprintf(stderr, "                 estimated haploid genome size used for inferring read coverage [auto]\n");
     fprintf(stderr, "  Assembly:\n");
@@ -269,6 +273,7 @@ void init_opt(hifiasm_opt_t* asm_opt)
 	asm_opt->bf_shift = 37;
 	asm_opt->max_kmer_cnt = 2000;
 	asm_opt->high_factor = 5.0;
+	asm_opt->pt_save_high_factor = 0; // 0 = disabled; persist reload-index as built
 	asm_opt->max_ov_diff_ec = 0.04;
 	asm_opt->max_ov_diff_final = 0.03;
 	asm_opt->hom_cov = 20;
@@ -1005,6 +1010,8 @@ int CommandLine_process(int argc, char *argv[], hifiasm_opt_t* asm_opt)
             asm_opt->rl_cut = atol(opt.arg);
         } else if (c == 365) {
             asm_opt->sc_cut = atol(opt.arg);
+        } else if (c == 366) {
+            asm_opt->pt_save_high_factor = atof(opt.arg);
         } else if (c == 'l') {   ///0: disable purge_dup; 1: purge containment; 2: purge overlap
             asm_opt->purge_level_primary = asm_opt->purge_level_trio = atoi(opt.arg);
         }

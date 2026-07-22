@@ -62,6 +62,9 @@ typedef struct {
 	int bf_shift;
 	int max_kmer_cnt;
 	double high_factor; // coverage cutoff set to high_factor*hom_cov
+	double pt_save_high_factor; // streaming: if >high_factor, persist the reload-index with this
+	                            // (more forgiving) high-occ cutoff so the next batch's frozen
+	                            // primary retains "band" k-mers. 0 = disabled (save as-is).
 	double max_ov_diff_ec;
 	double max_ov_diff_final;
 	int hom_cov;

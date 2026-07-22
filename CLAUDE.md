@@ -14,6 +14,17 @@ Requires: g++/gcc, zlib (`-lz`), pthreads. No C++11 — the codebase intentional
 
 The binary is `./hifiasm`.
 
+> **STRICT RULE — never overwrite `./hifiasm`.**
+> The `./hifiasm` binary may be in active use by other runs, pipelines, or people. Do **not**
+> run a plain `make` (its default `EXE=hifiasm` target overwrites `./hifiasm`) to build your own
+> test binary. When you need to build to verify a change, **always build to a unique name** via the
+> Makefile's `EXE` variable, e.g.:
+> ```bash
+> make EXE=hifiasm_dev        # or hifiasm_<feature>, hifiasm_<yyyymmdd>, etc.
+> ```
+> This reuses the shared `.o` files but links the executable to your unique name, leaving
+> `./hifiasm` untouched. Only rebuild `./hifiasm` itself if the user explicitly asks for it.
+
 ## Testing
 
 There is no unit test suite. CI (`.github/workflows/ci.yaml`) only verifies compilation. Functional testing is done by running the assembler on real read data and inspecting output GFA files.
@@ -96,3 +107,9 @@ The EC PAF entries cannot feed the graph directly because: (1) read sequences ch
 `ha_ec_ff` is the dominant bottleneck in streaming mode because it always iterates over **all** reads (`kt_for(..., n_a)`), even when only a small batch of new reads was added. Timing data shows it takes ~1.6 hr and is flat across batch sizes (20–100%), while EC rounds scale proportionally.
 
 The planned incremental fix is in [ecovlp.cpp:6525](ecovlp.cpp#L6525) (currently commented out): for `continue_from_prev_state` runs, only process new reads (`kt_for_mod` over `[total_reads0, n_a)`) and dirty old reads (`kt_for_dirty` over `[0, total_reads0)`). Non-dirty old reads keep their existing PAF entries; their reverse-direction entries get updated as a side effect when new/dirty reads find overlaps to them. **`kt_for_mod` and `kt_for_dirty` do not exist yet** — they need to be implemented in [kthread.cpp](kthread.cpp)/[kthread.h](kthread.h).
+
+### Frozen-primary accuracy vs full rebuild (delta path)
+
+In streaming mode the reloaded `ha_idx` is a *frozen* index built by a prior batch under that batch's high-occurrence filter (cutoff `5·peak_hom`). The current batch rebuilds the filter over all reads (higher `peak_hom` → higher cutoff), so it diverges from a from-scratch full rebuild: the filter changes *which minimizers are selected* (a filtered k-mer is invisible to windowing, see [sketch.cpp:509-516](sketch.cpp#L509-L516)), and "band" k-mers whose global count sits in `[5·peak_prev, 5·peak_cur)` were filtered out of the frozen index but are eligible now. This costs new↔old anchors and mis-weights `an->cnt` during EC. Exact equivalence requires re-sketching old reads under the current filter (= the full rebuild).
+
+`--pt-save-high-factor FLOAT` (default 0 = off) mitigates this: in [ha_ec_ff](Assembly.cpp#L2021) it persists a *more forgiving* reload index (filter cutoff `FLOAT·peak_hom`, `FLOAT > -D`) while this batch's own overlaps keep the normal `-D` index, so the *next* batch's frozen primary retains band k-mers. Lookup still uses the fresh current-batch filter (the saved forgiving flt is discarded/rebuilt), so extra high-occ entries are never queried. It is an approximation (gap ∝ `|C_save − C_next|`), not exact. Only affects future batches; existing `.pt_flt` bins must be re-saved to benefit.

@@ -1354,6 +1354,15 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 	// persisted for incremental reuse (HA_F_VERBOSE_GFA marks those streaming runs).
 	int min_ct = ((extra_flags & HAF_INCREMENTAL) || (asm_opt->flag & HA_F_VERBOSE_GFA)) ? 1 : 2;
 	if (flt_tab == 0) {
+		// TODO(no-kmer-flt incremental): on the delta path (HAF_INCREMENTAL) this branch is only
+		// reached with --no-kmer-flt (HA_F_NO_KMER_FLT, so flt_tab==0). Here peak_hom is the
+		// NEW-READ SUBSET peak (the delta count table covers only new reads), so cutoff =
+		// peak_hom * high_factor is computed on the subset and is too low versus dev's full-set
+		// rebuild, which can drop legitimately high-count new-read k-mers from the delta index and
+		// diverge from the reference. Latent only: the default streaming path runs with the k-mer
+		// filter enabled (flt_tab != 0 -> the else branch, cutoff = YAK_MAX_COUNT-1, matches dev).
+		// Fix when needed: pass/derive the full-set peak_hom for the delta cutoff (e.g. use the
+		// asm_opt.hom_cov established by ha_ft_gen over all reads) instead of the subset peak.
 		int cutoff = (int)(peak_hom * asm_opt->high_factor);
 		if (cutoff > YAK_MAX_COUNT - 1) cutoff = YAK_MAX_COUNT - 1;
 		if((extra_flag1 & HAF_SKIP_READ) && (extra_flag2 & HAF_SKIP_READ)) cutoff = YAK_MAX_COUNT - 1;

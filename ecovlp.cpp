@@ -6581,6 +6581,12 @@ void ha_print_ovlp_stat_0(ec_ovec_buf_t *b, uint64_t n_thre, uint64_t n_a)
     }
 
     // remove_invalid_overlaps();
+    // ^ INTENTIONALLY DISABLED. dev 6c9bbb4 calls remove_invalid_overlaps() here, but it is
+    //   confirmed to HURT accuracy in this pipeline: disabling it improved results (verified even
+    //   in dev itself). Keeping it commented out is a DELIBERATE divergence from dev — do NOT
+    //   "restore" it to match dev. The remaining branch-vs-dev accuracy gap is elsewhere: the
+    //   EC-round frozen-primary + delta k-mer machinery (anchor.cpp two-table lookup / htab.cpp
+    //   ha_pt_gen_delta), not this call.
     // kt_for(n_thre, worker_hap_dc_ec_gen_new_idx, b, n_a);///debug_for_fix
 
     for (k = 0; k < n_thre; ++k) {

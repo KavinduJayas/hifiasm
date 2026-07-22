@@ -2036,9 +2036,35 @@ void ha_ec_ff(int renew_idx)
 
     cal_ov_r(asm_opt.thread_num, R_INF.total_reads, renew_idx);
 
-    if(asm_opt.flag & HA_F_VERBOSE_GFA)
-        write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
-    
+    if(asm_opt.flag & HA_F_VERBOSE_GFA) {
+        if (asm_opt.pt_save_high_factor > asm_opt.high_factor && !(asm_opt.flag & HA_F_NO_KMER_FLT)) {
+            // Persist a MORE-FORGIVING index than the one used for this batch's own overlaps.
+            // The next streaming batch loads it as its frozen EC primary (ha_idx). A higher
+            // high-occ cutoff retains "band" k-mers whose global count grows into the acceptable
+            // range next batch, so the frozen-primary vs full-rebuild gap shrinks (gap is roughly
+            // proportional to |C_save - C_next|). Build a permissive flt table (cutoff =
+            // pt_save_high_factor * peak_hom, read_from_store=1 so R_INF is untouched) and index
+            // with it, but WRITE the FRESH (current-batch) ha_flt_tab: the next batch discards the
+            // saved flt and rebuilds it over all reads, and at lookup the query is sketched with
+            // that fresh flt, so the extra (> C_next) index entries are simply never queried.
+            int s_hom = 0, s_het = 0; double saved_hf = asm_opt.high_factor;
+            asm_opt.high_factor = asm_opt.pt_save_high_factor;
+            // Clear HA_F_VERBOSE_GFA only around ha_ft_gen so it does NOT rewrite the .ct index
+            // (that would replace the batch-start count table; the flt table itself is unchanged).
+            // Restore before ha_pt_gen, which relies on the flag to keep singletons (min_ct=1).
+            asm_opt.flag &= ~HA_F_VERBOSE_GFA;
+            void *save_flt = ha_ft_gen(&asm_opt, &R_INF, &s_hom, 0, 1);
+            asm_opt.flag |= HA_F_VERBOSE_GFA;
+            asm_opt.high_factor = saved_hf; // ha_pt_gen w/ flt_tab!=0 ignores high_factor; restore now
+            ha_pt_t *save_idx = ha_pt_gen(&asm_opt, save_flt, 1, 0, &R_INF, &s_hom, &s_het, 0);
+            write_pt_index(ha_flt_tab, save_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+            ha_pt_destroy(save_idx);
+            ha_ft_destroy(save_flt);
+        } else {
+            write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+        }
+    }
+
 	ha_pt_destroy(ha_idx); ha_idx = NULL;
 }
 
