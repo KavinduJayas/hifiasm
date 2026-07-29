@@ -1033,8 +1033,12 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 	if(ha_idx == NULL /*|| (round == 0 && asm_opt.continue_from_prev_state) */){
         ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1, 0, &R_INF, &hom_cov, &het_cov, 0); // build the index
         asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
-    } else if (asm_opt.continue_from_prev_state && ha_idx_delta == NULL) {
-        // Index loaded from disk holds ALL prior-batch reads and is never stale: old reads
+    } else if (asm_opt.continue_from_prev_state && (asm_opt.flag & HA_F_VERBOSE_GFA) && ha_idx_delta == NULL) {
+        // Delta EC only applies when a FROZEN prior index was loaded from disk, which only
+        // happens under --dbg-gfa (HA_F_VERBOSE_GFA); see the gated load_pt_index in ha_assemble.
+        // Without --dbg-gfa, ha_idx is built fresh over ALL reads this round (never frozen), so a
+        // new-reads delta on top would double-count -- fall through to the full-rebuild path (dev
+        // behavior) instead. Index loaded from disk holds ALL prior-batch reads and is never stale: old reads
         // are never re-corrected, so their positions stay valid. Build a delta covering only
         // the new reads so cal_ec_r can correct them via the two-table lookup in anchor.cpp.
         // Pass NULL for hom_cov/het_cov: the delta counts only the new-read batch, so its
@@ -2214,7 +2218,7 @@ int ha_assemble(void)
             tot_b = tot_e = 0;
 			// ha_overlap_and_correct(r);
             R_INF.round=r;
-            ha_ec(r, asm_opt.number_of_pround, (r<asm_opt.number_of_round-1) && !asm_opt.continue_from_prev_state ?1:0 /*KJ:destroy index if last round*/, &tot_b, &tot_e);
+            ha_ec(r, asm_opt.number_of_pround, (r<asm_opt.number_of_round-1) && !(asm_opt.continue_from_prev_state && (asm_opt.flag & HA_F_VERBOSE_GFA)) ?1:0 /*KJ:destroy index if last round; keep the frozen primary across rounds only for the loaded-index delta path (-j + --dbg-gfa)*/, &tot_b, &tot_e);
 			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> corrected reads for round %d\n", __func__, yak_realtime(),
 					yak_cpu_usage(), yak_peakrss_in_gb(), r + 1);
             fprintf(stderr, "[M::%s] # bases: %lu; # corrected bases: %lu\n", __func__, tot_b, tot_e);
