@@ -2194,7 +2194,14 @@ int ha_assemble(void)
             exit(EXIT_FAILURE);
         }
         ha_flt_tab = ha_idx = NULL;
-        if((asm_opt.flag & HA_F_VERBOSE_GFA) /*KJ: TODO: test --> && !asm_opt.continue_from_prev_state*/) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
+        if((asm_opt.flag & HA_F_VERBOSE_GFA) /*KJ: TODO: test --> && !asm_opt.continue_from_prev_state*/) {
+            load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+            load_ct_index(&ha_ct_table, asm_opt.output_file_name);
+            // -F (HA_F_NO_KMER_FLT) skips the high-occurrence k-mer filter. Drop any filter
+            // table loaded from disk so lookups run unfiltered; the frozen primary index in
+            // ha_idx is still kept and used (only the filter is skipped, per -F).
+            if ((asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab) { ha_ft_destroy(ha_flt_tab); ha_flt_tab = NULL; }
+        }
 
         R_INF.total_reads0 = R_INF.total_reads;
 		// construct hash table for high occurrence k-mers
@@ -2207,6 +2214,17 @@ int ha_assemble(void)
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}
+		else if ((asm_opt.flag & HA_F_NO_KMER_FLT) && asm_opt.continue_from_prev_state)
+        {
+            // -F + --dbg-gfa continue: the filter is skipped, but the frozen primary index
+            // was loaded from disk so ha_ec will NOT rebuild it -- meaning new (E1) read
+            // lengths and full-set coverage would not be established anywhere else. Run
+            // ha_ft_gen purely for those side effects, then discard the filter table so
+            // k-mer filtering stays off (ha_flt_tab remains NULL).
+            void *flt = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
+            ha_opt_update_cov(&asm_opt, hom_cov);
+            ha_ft_destroy(flt);
+        }
         // ha_ft_gen loads new reads but does not allocate dirty_reads; keep a zeroed array
         // covering the full read set so downstream null-tolerant guards stay consistent.
         if (asm_opt.continue_from_prev_state && R_INF.dirty_reads == NULL && R_INF.total_reads > 0)
@@ -2296,7 +2314,14 @@ int ha_assemble_pair(void)
         // Output_corrected_reads(); exit(0);
 
         ha_flt_tab = ha_idx = NULL; r = asm_opt.number_of_round - 1;
-        if((asm_opt.flag & HA_F_VERBOSE_GFA)) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
+        if((asm_opt.flag & HA_F_VERBOSE_GFA)) {
+            load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+            load_ct_index(&ha_ct_table, asm_opt.output_file_name);
+            // -F skips the high-occurrence k-mer filter: drop any filter table loaded from
+            // disk (the frozen primary index in ha_idx is still kept and used). Reads are
+            // already loaded here via append_All_reads, so no read-load side effect is needed.
+            if ((asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab) { ha_ft_destroy(ha_flt_tab); ha_flt_tab = NULL; }
+        }
 
         // construct hash table for high occurrence k-mers
         if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) {
