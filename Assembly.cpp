@@ -1075,12 +1075,13 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 
 
     // Output_corrected_fastq();
+
     cal_ec_r(asm_opt.thread_num, round, num_pround, R_INF.total_reads, (round == (asm_opt.number_of_round-1))?1:0, tot_b, tot_e);
 
     if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
-    // exit(1);
 
-    // if (r_out) write_pt_index(ha_flt_tab, ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name);
+    // exit(1);    
+
     if(des_idx) {
         ha_pt_destroy(ha_idx); ha_idx = NULL;
     }
@@ -2120,22 +2121,22 @@ int ha_assemble(void)
     pthread_t ec_write_tid; int ec_write_started = 0;
     //KJ: TODO: check if -j was given with only one file name. warn user and ask if want to load prefix.ec.fq
 	if (asm_opt.load_index_from_disk && load_all_data_from_disk(&R_INF.paf, &R_INF.reverse_paf, asm_opt.output_file_name)) {
-        ovlp_loaded = 1;
+		ovlp_loaded = 1;
 		fprintf(stderr, "[M::%s::%.3f*%.2f] ==> loaded corrected reads and overlaps from disk\n", __func__, yak_realtime(), yak_cpu_usage());
 		if (asm_opt.extract_list) {
 			ha_extract_print_list(&R_INF, asm_opt.extract_iter, asm_opt.extract_list);
 			exit(0);
 		}
-		if (asm_opt.continue_from_prev_state == 0 && asm_opt.flag & HA_F_WRITE_EC) {
+		if (asm_opt.continue_from_prev_state == 0 && (asm_opt.flag & HA_F_WRITE_EC)) {
             ec_write_started = 1;
             pthread_create(&ec_write_tid, NULL, output_corrected_thread, NULL);
         }
-		if (asm_opt.continue_from_prev_state == 0 && asm_opt.flag & HA_F_WRITE_PAF) Output_PAF();
+		if (asm_opt.continue_from_prev_state == 0 && (asm_opt.flag & HA_F_WRITE_PAF)) Output_PAF();
         if (asm_opt.het_cov == -1024) hap_recalculate_peaks(asm_opt.output_file_name), ovlp_loaded = 2;
 	}
 	if (!ovlp_loaded || asm_opt.continue_from_prev_state) {
         if(asm_opt.continue_from_prev_state && !ovlp_loaded) {
-            fprintf(stderr, "Could not load prev state data! Please make sure all the .bin files from the previous run are accessible.");
+            fprintf(stderr, "[ERROR] could not load previous state; make sure all .bin files from the previous run are accessible\n");
             exit(EXIT_FAILURE);
         }
         ha_flt_tab = ha_idx = NULL;
@@ -2143,7 +2144,7 @@ int ha_assemble(void)
 
         R_INF.total_reads0 = R_INF.total_reads;
 		// construct hash table for high occurrence k-mers
-		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && (ha_flt_tab == NULL)) 
+		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) 
         {
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
@@ -2154,8 +2155,9 @@ int ha_assemble(void)
 			ha_opt_reset_to_round(&asm_opt, r); // this update asm_opt.roundID and a few other fields
             tot_b = tot_e = 0;
 			// ha_overlap_and_correct(r);
-            R_INF.round=r;
-            ha_ec(r, asm_opt.number_of_pround, (r<asm_opt.number_of_round-1)?1:0 /*KJ:destroy index if last round*/, &tot_b, &tot_e);
+            R_INF.round = r;
+            //KJ: des_idx = 1 on every round but the last, so the index is rebuilt next round
+            ha_ec(r, asm_opt.number_of_pround, (r<asm_opt.number_of_round-1)?1:0, &tot_b, &tot_e);
 			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> corrected reads for round %d\n", __func__, yak_realtime(),
 					yak_cpu_usage(), yak_peakrss_in_gb(), r + 1);
             fprintf(stderr, "[M::%s] # bases: %lu; # corrected bases: %lu\n", __func__, tot_b, tot_e);
@@ -2166,9 +2168,9 @@ int ha_assemble(void)
 		if (asm_opt.flag & HA_F_WRITE_EC) {
             ec_write_started = 1;
             pthread_create(&ec_write_tid, NULL, output_corrected_thread, NULL);
-        }
 			fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> writing corrected reads (background)\n", __func__, yak_realtime(),
 					yak_cpu_usage(), yak_peakrss_in_gb());
+        }
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
 		// ha_overlap_final();
@@ -2185,8 +2187,8 @@ int ha_assemble(void)
     if(ovlp_loaded == 2) ovlp_loaded = 0;
     ha_opt_update_cov_min(&asm_opt, asm_opt.hom_cov, MIN_N_CHAIN);
 
-    build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf,
-        R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round,
+    build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf, 
+        R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round, 
         asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded || asm_opt.continue_from_prev_state);
     if (ec_write_started) pthread_join(ec_write_tid, NULL);
 
@@ -2204,7 +2206,6 @@ int ha_assemble(void)
         char *base_output_file_name = asm_opt.output_file_name;
         char *iter_output_file_name = (char*)malloc(strlen(asm_opt.output_file_name) + 30);
 
-        // Ensure read_file_names has room for 2 entries
         asm_opt.read_file_names = (char**)realloc(asm_opt.read_file_names, sizeof(char*) * 2);
 
         char *new_file_buf = NULL;

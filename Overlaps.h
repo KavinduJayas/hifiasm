@@ -113,7 +113,6 @@ typedef struct {
 	size_t n, m;
 }vec_mg_lchain_t;
 
-///query is the read itself
 void init_ma_hit_t_alloc(ma_hit_t_alloc* x);
 void clear_ma_hit_t_alloc(ma_hit_t_alloc* x);
 void resize_ma_hit_t_alloc(ma_hit_t_alloc* x, uint32_t size);
@@ -123,6 +122,7 @@ void ma_hit_sort_tn(ma_hit_t *a, long long n);
 void ma_hit_sort_qns(ma_hit_t *a, long long n);
 
 int load_all_data_from_disk(ma_hit_t_alloc **sources, ma_hit_t_alloc **reverse_sources, char* output_file_name);
+
 
 typedef struct {
 	uint32_t s:31, del:1, e;
@@ -622,7 +622,7 @@ void debug_info_of_specfic_read(const char* name, ma_hit_t_alloc* sources, ma_hi
 void collect_abnormal_edges(ma_hit_t_alloc* paf, ma_hit_t_alloc* rev_paf, long long readNum);
 void add_overlaps(ma_hit_t_alloc* source_paf, ma_hit_t_alloc* dest_paf, uint64_t* source_index, long long listLen);
 void remove_overlaps(ma_hit_t_alloc* source_paf, uint64_t* source_index, long long listLen);
-void add_overlaps_from_different_sources(ma_hit_t_alloc* source_paf_list, ma_hit_t_alloc* dest_paf,
+void add_overlaps_from_different_sources(ma_hit_t_alloc* source_paf_list, ma_hit_t_alloc* dest_paf, 
 uint64_t* source_index, long long listLen);
 
 #define EvaluateLen(U, id) ((U).a[(id)].start)

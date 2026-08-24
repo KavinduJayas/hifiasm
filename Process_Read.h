@@ -85,6 +85,7 @@ inline void append_PAF_alloc(PAF_alloc* list, PAF* e)
     list->list[list->length] = (*e);
     list->length++;
 }
+
 #define AMBIGU 0
 #define FATHER 1
 #define MOTHER 2

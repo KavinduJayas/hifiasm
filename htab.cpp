@@ -992,32 +992,20 @@ ha_ct_t *ha_count(const hifiasm_opt_t *asm_o, int flag, int HPC, int k, int w, h
 {
 	int i;
 	int64_t rl_cut = asm_opt.rl_cut;
-	int64_t n_seq=0; 
-	// int64_t n_seq = R_INF.total_reads0; 
+	int64_t n_seq = 0;
 	uint64_t n_bs = 0;
 	yak_copt_t opt;
 	ha_ct_t *h = 0;
 	assert(!(flag & HAF_RS_WRITE_LEN) || !(flag & HAF_RS_WRITE_SEQ)); // not both
 	///for 0-th counting, flag = HAF_COUNT_ALL|HAF_RS_WRITE_LEN
-	if (rs){
-		if (flag & HAF_RS_WRITE_LEN ){//KJ: if prev state was loaded from verbose gfa, this opt check is unneccessary
-			if(asm_opt.continue_from_prev_state==0)
-			init_All_reads(rs);
-			else
-			{
-				reinit_All_reads(rs);
-				// rs->total_reads=0;
-
-			}
-		}else if (flag & HAF_RS_WRITE_SEQ){
-			if(asm_opt.continue_from_prev_state==0) {
-				malloc_All_reads(rs);
-			}else{
-				realloc_All_reads(rs);
-				// rs->total_reads=rs->total_reads0;
-			}
+	if (rs) {
+		if (flag & HAF_RS_WRITE_LEN) {
+			if(asm_opt.continue_from_prev_state) reinit_All_reads(rs);
+			else init_All_reads(rs);
+		} else if (flag & HAF_RS_WRITE_SEQ) {
+			if(asm_opt.continue_from_prev_state) realloc_All_reads(rs);
+			else malloc_All_reads(rs);
 		}
-			
 	}
 	yak_copt_init(&opt);
 	opt.k = k;
@@ -1298,7 +1286,7 @@ ha_pt_t *ha_pt_gen(const hifiasm_opt_t *asm_opt, const void *flt_tab, int read_f
 	if(!(asm_opt->flag & HA_F_FAST))
 	{
 		fprintf(stderr, "[M::%s::] counting in normal mode\n", __func__);
-		pt = ha_pt_gen(ct, asm_opt->thread_num, 0);//KJ: second call with ct 
+		pt = ha_pt_gen(ct, asm_opt->thread_num, 0);
 		ha_count(asm_opt, HAF_COUNT_EXACT|extra_flag2,  !(asm_opt->flag&HA_F_NO_HPC), asm_opt->k_mer_length, asm_opt->mz_win, pt, flt_tab, rs, NULL, 1, NULL, 0);
 		assert((uint64_t)tot_cnt == pt->tot_pos);
 	}

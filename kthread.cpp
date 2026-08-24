@@ -89,6 +89,7 @@ void kt_for_mod(int n_threads, void (*func)(void*,long,int), void *data, long n)
 		kt_for_t t;
 		pthread_t *tid;
 		t.func = func, t.data = data, t.n_threads = n_threads, t.n = n;
+		t.dirty_ids = 0;
 		t.w = (ktf_worker_t*)calloc(n_threads, sizeof(ktf_worker_t));
 		tid = (pthread_t*)calloc(n_threads, sizeof(pthread_t));
 		for (i = 0; i < n_threads; ++i)

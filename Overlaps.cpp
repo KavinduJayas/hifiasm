@@ -819,7 +819,8 @@ void remove_overlaps(ma_hit_t_alloc* source_paf, uint64_t* source_index, long lo
     source_paf->length = m;
 }
 
-void add_overlaps_from_different_sources(ma_hit_t_alloc* source_paf_list, ma_hit_t_alloc* dest_paf,
+
+void add_overlaps_from_different_sources(ma_hit_t_alloc* source_paf_list, ma_hit_t_alloc* dest_paf, 
 uint64_t* source_index, long long listLen)
 {
     long long i;
